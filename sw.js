@@ -1,9 +1,9 @@
-const CACHE = "magic-auction-v7";
+const CACHE = "magic-auction-v8";
 
 const ASSETS = [
   "./index.html",
-  "./styles.css",
-  "./app.js",
+  "./styles.css?v=8",
+  "./app.js?v=8",
   "./data/auction.json",
   "./manifest.webmanifest",
   "./icon.svg"
@@ -31,17 +31,13 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  if (request.mode === "navigate") {
-    event.respondWith(networkFirst(request, "./index.html"));
+  if (url.pathname.endsWith("/sw.js")) {
+    event.respondWith(fetch(request));
     return;
   }
 
-  if (url.pathname.endsWith("auction.json")) {
-    event.respondWith(networkFirst(request));
-    return;
-  }
-
-  event.respondWith(cacheFirst(request));
+  const fallback = request.mode === "navigate" ? "./index.html" : null;
+  event.respondWith(networkFirst(request, fallback));
 });
 
 async function networkFirst(request, fallback) {
@@ -57,19 +53,3 @@ async function networkFirst(request, fallback) {
   }
 }
 
-async function cacheFirst(request) {
-  const cache = await caches.open(CACHE);
-  const cached = await cache.match(request);
-  if (cached) {
-    fetch(request)
-      .then((response) => {
-        if (response.ok) cache.put(request, response.clone());
-      })
-      .catch(() => {});
-    return cached;
-  }
-
-  const response = await fetch(request);
-  if (response.ok) cache.put(request, response.clone());
-  return response;
-}

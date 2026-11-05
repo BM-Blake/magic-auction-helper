@@ -11,7 +11,7 @@
     <title>Magic Auction Helper</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=8">
   </head>
   <body>
     <div class="app">
@@ -68,12 +68,12 @@
           <summary>Prices and GitHub Pages</summary>
           <p id="disclaimer"></p>
           <p>
-            Push this folder to GitHub, then set Pages to deploy from the <code>main</code> branch root.
-            Paths are relative, so a project site at <code>/your-repo/</code> works. Open the page once while online.
-            After that, the service worker loads it with no connection.
+            Push this folder to GitHub, then set Pages to deploy from this branch's root.
+            Paths are relative, so a project site at <code>/magic-auction-helper/</code> works. Open the page once while online.
+            After that, the service worker loads it with no connection. A reload while online picks up newer files.
           </p>
           <p>
-            Tune the bands in <code>data/auction.json</code>. After you change that file, bump <code>CACHE</code> in <code>sw.js</code> so an installed copy downloads the new ranges.
+            Tune the bands in <code>data/auction.json</code>. Reload once while online so this device saves the new ranges.
           </p>
         </details>
       </main>
@@ -104,6 +104,6 @@
       <p id="form-error" class="form-error" hidden></p>
       <button type="submit" class="primary">Add</button>
     </form>
-    <script src="app.js"></script>
+    <script src="app.js?v=8"></script>
   </body>
 </html>
