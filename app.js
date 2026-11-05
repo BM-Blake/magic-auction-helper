@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=31"),
-      fetch("data/treasures.json?v=31")
+      fetch("data/auction.json?v=32"),
+      fetch("data/treasures.json?v=32")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -603,7 +603,7 @@ function onDetailClick(event) {
   if (!button) return;
   state.board.items = state.board.items.filter((item) => item.id !== button.dataset.remove);
   if (state.editing === button.dataset.remove) state.editing = null;
-  if (state.selected && !matchingItems().length) state.selected = null;
+  if (!selectionStillOpen()) state.selected = null;
   persist();
   render();
 }
@@ -633,7 +633,7 @@ function onDetailSubmit(event) {
   item.size = chosen("size") ? Number(chosen("size")) : null;
   item.price = String(raw).trim() ? price : null;
   state.editing = null;
-  if (state.selected && !matchingItems().length) state.selected = null;
+  if (!selectionStillOpen()) state.selected = null;
   persist();
   render();
 }
@@ -769,8 +769,14 @@ function renderUnknown() {
   if (count <= 0) return;
   const fieldset = $("#rarity-group");
   fieldset.hidden = false;
-  const chip = document.createElement("span");
+  const selected = isUnknownSelection(state.selected);
+  const chip = document.createElement("button");
+  chip.type = "button";
   chip.className = "chip is-on";
+  chip.classList.toggle("is-selected", selected);
+  chip.dataset.open = "rarities";
+  chip.dataset.id = "unknown";
+  chip.setAttribute("aria-pressed", selected ? "true" : "false");
   chip.style.setProperty("--chip", "#3a4154");
   chip.style.setProperty("--chip-ink", "#f6f1e7");
   const name = document.createElement("span");
@@ -876,8 +882,9 @@ function renderGroup(container, fieldset, kind, entries) {
 function renderDetail() {
   const box = $("#detail");
   const items = matchingItems();
-  const max = categoryMax(state.selected);
-  if (!state.selected || (!items.length && max == null)) {
+  const unknown = isUnknownSelection(state.selected);
+  const max = unknown ? null : categoryMax(state.selected);
+  if (!state.selected || (!items.length && max == null && !(unknown && unknownRemainder(state.board) > 0))) {
     box.hidden = true;
     $("#detail-list").replaceChildren();
     $("#detail-empty").hidden = true;
@@ -935,17 +942,31 @@ function renderExact() {
   $("#exact-total").textContent = formatCoins(total);
 }
 
+function isUnknownSelection(selected) {
+  return Boolean(selected && selected.kind === "rarities" && selected.id === "unknown");
+}
+
+function selectionStillOpen() {
+  if (!state.selected) return false;
+  if (matchingItems().length) return true;
+  if (isUnknownSelection(state.selected)) return unknownRemainder(state.board) > 0;
+  return categoryMax(state.selected) != null;
+}
+
 function matchingItems() {
   if (!state.selected) return [];
   return state.board.items.filter((item) => {
-    if (state.selected.kind === "rarities") return item.rarity === state.selected.id;
+    if (state.selected.kind === "rarities") {
+      if (state.selected.id === "unknown") return !item.rarity;
+      return item.rarity === state.selected.id;
+    }
     if (state.selected.kind === "types") return item.type === state.selected.id;
     return item.size != null && String(item.size) === state.selected.id;
   });
 }
 
 function selectionLabel(selected) {
-  if (selected.kind === "rarities") return rarityName(selected.id);
+  if (selected.kind === "rarities") return selected.id === "unknown" ? "Unknown" : rarityName(selected.id);
   if (selected.kind === "types") return typeName(selected.id);
   return `${selected.id} tiles`;
 }
@@ -955,7 +976,7 @@ function itemSummary(item) {
   if (item.rarity) parts.push(rarityName(item.rarity));
   if (item.type) parts.push(typeName(item.type));
   if (item.size != null) parts.push(`${item.size} tile${item.size === 1 ? "" : "s"}`);
-  return parts.join(" · ") || "Revealed treasure";
+  return parts.join(" · ") || "Unknown rarity";
 }
 
 function sizeLabel(size) {
@@ -1016,10 +1037,8 @@ function catalogWorth(board, data, pickMax) {
   const usual = items.filter((item) => item.price >= range.min && item.price <= range.max);
   const cheaper = items.filter((item) => item.price < range.min);
   const pricier = items.filter((item) => item.price > range.max);
-  const slotPool = (slot) => {
+  const slotPool = () => {
     if (!usual.length) return items;
-    const specified = Boolean(slot.rarity || slot.type || slot.size != null);
-    if (!specified) return usual;
     return usual.concat(pickMax ? pricier : cheaper).sort(byPrice);
   };
   const ordered = slots
@@ -1218,5 +1237,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=31").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=32").catch(() => {});
 }
