@@ -1,11 +1,11 @@
-const CACHE = "magic-auction-v30";
+const CACHE = "magic-auction-v31";
 
 const ASSETS = [
   "./index.html",
-  "./styles.css?v=30",
-  "./app.js?v=30",
-  "./data/auction.json",
-  "./data/treasures.json",
+  "./styles.css?v=31",
+  "./app.js?v=31",
+  "./data/auction.json?v=31",
+  "./data/treasures.json?v=31",
   "./manifest.webmanifest",
   "./icon.svg"
 ];
@@ -33,7 +33,7 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (url.pathname.endsWith("/sw.js")) {
-    event.respondWith(fetch(request));
+    event.respondWith(fetch(request, { cache: "reload" }));
     return;
   }
 
@@ -44,7 +44,7 @@ self.addEventListener("fetch", (event) => {
 async function networkFirst(request, fallback) {
   const cache = await caches.open(CACHE);
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, { cache: "reload" });
     if (response.ok) cache.put(fallback || request, response.clone());
     return response;
   } catch (error) {

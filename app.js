@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json"),
-      fetch("data/treasures.json")
+      fetch("data/auction.json?v=31"),
+      fetch("data/treasures.json?v=31")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1013,22 +1013,27 @@ function catalogWorth(board, data, pickMax) {
     return diff || left.index - right.index;
   };
   const items = treasures.map((item, index) => ({ ...item, index })).sort(byPrice);
-  const houseItems = items
-    .filter((item) => item.price >= range.min && item.price <= range.max)
-    .sort(byPrice);
-  const pool = houseItems.length ? houseItems : items;
+  const usual = items.filter((item) => item.price >= range.min && item.price <= range.max);
+  const cheaper = items.filter((item) => item.price < range.min);
+  const pricier = items.filter((item) => item.price > range.max);
+  const slotPool = (slot) => {
+    if (!usual.length) return items;
+    const specified = Boolean(slot.rarity || slot.type || slot.size != null);
+    if (!specified) return usual;
+    return usual.concat(pickMax ? pricier : cheaper).sort(byPrice);
+  };
   const ordered = slots
     .map((slot, index) => ({
       slot,
       index,
-      choices: pool.filter((item) => matchesFacts(item, slot)).length
+      choices: slotPool(slot).filter((item) => matchesFacts(item, slot)).length
     }))
     .sort((left, right) => left.choices - right.choices || left.index - right.index);
   const used = new Set();
   return ordered.reduce((sum, entry) => {
-    const inHouse = pool === items || pool.some((item) => slotFitsHouse(item, entry.slot));
+    const pool = slotPool(entry.slot);
     const taken = takeItem(pool, used, entry.slot, rooms) ||
-      (inHouse ? null : takeItem(items, used, entry.slot, rooms));
+      (pool === items ? null : takeItem(items, used, entry.slot, rooms));
     if (!taken) return sum;
     used.add(taken.item.index);
     spend(taken.item, taken.slot, rooms);
@@ -1073,11 +1078,6 @@ function roomFor(board, ids, kind, read) {
     room[id] = Number.isInteger(maxes[id]) ? Math.max(0, maxes[id] - known) : Infinity;
   });
   return room;
-}
-
-function slotFitsHouse(item, slot) {
-  if (matchesFacts(item, slot)) return true;
-  return slot.size != null && matchesFacts(item, { ...slot, size: null });
 }
 
 function takeItem(items, used, slot, rooms) {
@@ -1218,5 +1218,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=30").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=31").catch(() => {});
 }

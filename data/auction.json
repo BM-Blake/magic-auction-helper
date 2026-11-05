@@ -4,11 +4,11 @@
     "mode": "Magic Auction",
     "season": "7.1",
     "currency": "Magic Auction Coins",
-    "estimateDisclaimer": "Estimate worth adds real treasure prices from data/treasures.json, keeping only prices that fit the selected auction house. Each treasure is used once. Common treasures are stored in that list as white and shown here as gray. Exact price is the total of prices the game has actually shown.",
+    "estimateDisclaimer": "Estimate worth adds real treasure prices from data/treasures.json. Each auction house has a usual price range, and a revealed treasure can be worth more or less than that. Each treasure is used once. Common treasures are stored in that list as white and shown here as gray. Exact price is the total of prices the game has actually shown.",
     "howToEdit": "Treasure prices live in data/treasures.json. The estimates rows are no longer used."
   },
   "houses": [
-    { "id": "eruditio", "name": "Eruditio", "minPrice": 100, "maxPrice": 14999 },
+    { "id": "eruditio", "name": "Eruditio", "minPrice": 4000, "maxPrice": 300000 },
     { "id": "dawnlight", "name": "Dawnlight", "minPrice": 15000, "maxPrice": 1000000 },
     { "id": "world", "name": "World", "minPrice": 15000, "maxPrice": 2500000 },
     { "id": "cosmic", "name": "Cosmic", "minPrice": 50000, "maxPrice": 5000000 }
