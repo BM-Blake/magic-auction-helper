@@ -777,7 +777,6 @@ function resolveUnknown() {
   let remaining = null;
   if (board.treasureTotal != null) remaining = board.treasureTotal - knownSum;
   else if (Number.isInteger(unknownMax)) remaining = unknownMax;
-  else if (listedUnknown > 0) remaining = listedUnknown;
   if (remaining == null || remaining < 0 || listedUnknown > remaining) return false;
   let changed = false;
   real.forEach((entry) => {
@@ -805,10 +804,7 @@ function resolveUnknown() {
 
 function knownRarityCount(board, id) {
   const max = board.maxCounts?.rarities?.[id];
-  const listed = board.items.filter((item) => item.rarity === id).length;
-  if (Number.isInteger(max)) return Math.max(max, listed);
-  if (listed > 0) return listed;
-  return null;
+  return Number.isInteger(max) ? max : null;
 }
 
 function renderTreasureTotal() {
@@ -1160,5 +1156,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=25").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=26").catch(() => {});
 }
