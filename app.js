@@ -1,8 +1,6 @@
 "use strict";
 
 const STORAGE_KEY = "magic-auction-items-v1";
-const COUNT_LIMIT = 30;
-
 const state = {
   data: null,
   board: null,
@@ -23,12 +21,16 @@ async function init() {
   window.addEventListener("offline", refreshNetwork);
 
   try {
-    const response = await fetch("data/auction.json");
-    if (!response.ok) throw new Error("Auction data did not load.");
-    state.data = await response.json();
+    const [auctionResponse, treasureResponse] = await Promise.all([
+      fetch("data/auction.json"),
+      fetch("data/treasures.json")
+    ]);
+    if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
+    state.data = await auctionResponse.json();
+    state.data.treasures = await treasureResponse.json();
   } catch (error) {
     $("#load-error").hidden = false;
-    $("#load-error").textContent = "Could not load data/auction.json. The tracker needs that file beside this page.";
+    $("#load-error").textContent = "Could not load the auction data. The tracker needs data/auction.json and data/treasures.json beside this page.";
     $("#info-heading").closest("section").hidden = true;
     $("#fab").hidden = true;
     return;
@@ -754,7 +756,7 @@ function render() {
   })));
   $("#info-empty").hidden = hasBoardInfo();
   renderDetail();
-  renderEstimate(counts);
+  renderEstimate();
   renderExact();
   renderTreasureTotal();
 }
@@ -840,17 +842,14 @@ function renderDetail() {
   });
 }
 
-function renderEstimate(counts) {
-  const active = usesMaxConstraint(state.board);
-  const source = active ? tally(state.board.items.filter((item) => item.rarity), state.data) : counts;
-  const listed = estimateWorth(source, state.data);
-  const extra = active ? constrainedWorth(state.board, state.data) : { min: 0, max: 0 };
-  const worth = tidyRange(listed.min + extra.min, listed.max + extra.max);
-  $("#worth-range").textContent = !worth || worth.max === 0
+function renderEstimate() {
+  const min = catalogWorth(state.board, state.data, false);
+  const max = Math.max(min, catalogWorth(state.board, state.data, true));
+  $("#worth-range").textContent = max === 0
     ? "0"
-    : worth.min === worth.max
-      ? formatCoins(worth.min)
-      : `${formatCoins(worth.min)} – ${formatCoins(worth.max)}`;
+    : min === max
+      ? formatCoins(min)
+      : `${formatCoins(min)} – ${formatCoins(max)}`;
 }
 
 function renderExact() {
@@ -901,284 +900,114 @@ function tally(items, data) {
   return { rarities, types, sizes };
 }
 
-function estimateWorth(board, data) {
-  const rarities = expandCounts(board.rarities);
-  if (!rarities.length) return { min: 0, max: 0 };
-
-  const typeGroups = expandCounts(board.types)
-    .map((id) => data.types.find((entry) => entry.id === id)?.group || null)
-    .filter(Boolean);
-  const sizes = expandCounts(board.sizes).map(Number);
-  const slots = typeGroups.slice(0, rarities.length);
-  while (slots.length < rarities.length) slots.push(null);
-
-  const minMatrix = rarities.map((rarity) => slots.map((group) => boundsFor(rarity, group, data).min));
-  const maxMatrix = rarities.map((rarity) => slots.map((group) => boundsFor(rarity, group, data).max));
-  const minBases = assignValues(minMatrix, false);
-  const maxBases = assignValues(maxMatrix, true);
-
-  return {
-    min: applyScales(minBases, sizes, data, false),
-    max: applyScales(maxBases, sizes, data, true)
-  };
-}
-
 function usesMaxConstraint(board) {
   if (!board || board.treasureTotal == null || !board.maxCounts) return false;
   return Object.keys(board.maxCounts.rarities || {}).some((id) => Number.isInteger(board.maxCounts.rarities[id]));
 }
 
-function constrainedWorth(board, data) {
-  const units = constrainedUnits(board);
-  if (!units.length) return { min: 0, max: 0 };
-  return {
-    min: priceConstrained(units, board, data, false),
-    max: priceConstrained(units, board, data, true)
-  };
-}
-
-function constrainedUnits(board) {
-  const items = board.items || [];
-  const unlisted = Math.max(0, board.treasureTotal - items.length);
-  const units = items.filter((item) => !item.rarity).map((item) => ({
-    type: item.type || null,
-    size: item.size == null ? null : item.size
-  }));
-  const fillers = Math.min(unlisted, 60);
-  for (let index = 0; index < fillers; index += 1) units.push({ type: null, size: null });
-  return units;
-}
-
-function priceConstrained(units, board, data, pickMax) {
-  const rarityRoom = countRooms(board, data.rarities.map((entry) => entry.id), "rarities", (item) => item.rarity || "");
-  const typeRoom = countRooms(board, data.types.map((entry) => entry.id), "types", (item) => item.type || "");
-  const sizeRoom = countRooms(board, data.sizePresets.map(String), "sizes", (item) => item.size == null ? "" : String(item.size));
-  const limitTypes = Object.keys(board.maxCounts.types || {}).some((id) => Number.isInteger(board.maxCounts.types[id]));
-  const limitSizes = Object.keys(board.maxCounts.sizes || {}).some((id) => Number.isInteger(board.maxCounts.sizes[id]));
-  const ordered = [...units].sort((a, b) => specificity(a) - specificity(b));
-  return ordered.reduce((sum, unit) => {
-    const rarity = takeRarity(unit, rarityRoom, data, pickMax);
-    if (!rarity) return sum;
-    const group = unit.type
-      ? groupForType(unit.type, data)
-      : limitTypes
-        ? takeGroup(typeRoom, data, rarity, pickMax)
-        : null;
-    const scale = unit.size != null
-      ? scaleFor(unit.size, data)
-      : limitSizes
-        ? takeScale(sizeRoom, data, pickMax)
-        : scaleFor(null, data);
-    const bounds = boundsFor(rarity, group, data);
-    const base = pickMax ? bounds.max : bounds.min;
-    const factor = pickMax ? scale.maxScale : scale.minScale;
-    if (!Number.isFinite(base) || !Number.isFinite(factor)) return sum;
-    return sum + base * factor;
+function catalogWorth(board, data, pickMax) {
+  const treasures = data.treasures || [];
+  const slots = estimateSlots(board);
+  if (!slots.length || !treasures.length) return 0;
+  const rooms = openRooms(board, data);
+  const items = treasures.map((item, index) => ({ ...item, index }));
+  items.sort((left, right) => {
+    const diff = pickMax ? right.price - left.price : left.price - right.price;
+    return diff || left.index - right.index;
+  });
+  const ordered = slots
+    .map((slot, index) => ({
+      slot,
+      index,
+      choices: treasures.filter((item) => matchesFacts(item, slot)).length
+    }))
+    .sort((left, right) => left.choices - right.choices || left.index - right.index);
+  const used = new Set();
+  return ordered.reduce((sum, entry) => {
+    const taken = takeItem(items, used, entry.slot, rooms);
+    if (!taken) return sum;
+    used.add(taken.item.index);
+    spend(taken.item, taken.slot, rooms);
+    return sum + taken.item.price;
   }, 0);
 }
 
-function specificity(unit) {
-  return (unit.type ? 1 : 0) + (unit.size != null ? 1 : 0);
+function estimateSlots(board) {
+  const active = usesMaxConstraint(board);
+  const slots = [];
+  (board.items || []).forEach((item) => {
+    if (!item.rarity && !active) return;
+    slots.push({
+      rarity: item.rarity || null,
+      type: item.type || null,
+      size: item.size == null ? null : item.size
+    });
+  });
+  if (!active || board.treasureTotal == null) return slots;
+  const unlisted = Math.max(0, board.treasureTotal - (board.items || []).length);
+  const fillers = Math.min(unlisted, 60);
+  for (let index = 0; index < fillers; index += 1) {
+    slots.push({ rarity: null, type: null, size: null });
+  }
+  return slots;
 }
 
-function countRooms(board, ids, kind, read) {
-  const room = {};
+function openRooms(board, data) {
+  return {
+    rarities: roomFor(board, data.rarities.map((entry) => entry.id), "rarities", (item) => item.rarity || ""),
+    types: roomFor(board, data.types.map((entry) => entry.id), "types", (item) => item.type || ""),
+    sizes: roomFor(board, data.sizePresets.map(String), "sizes", (item) => item.size == null ? "" : String(item.size))
+  };
+}
+
+function roomFor(board, ids, kind, read) {
   const maxes = board.maxCounts?.[kind] || {};
+  if (!ids.some((id) => Number.isInteger(maxes[id]))) return null;
+  const room = {};
   ids.forEach((id) => {
-    const known = board.items.filter((item) => read(item) === id).length;
+    const known = (board.items || []).filter((item) => read(item) === id).length;
     room[id] = Number.isInteger(maxes[id]) ? Math.max(0, maxes[id] - known) : Infinity;
   });
   return room;
 }
 
-function takeRarity(unit, room, data, pickMax) {
-  const chosen = bestRarity(unit, room, data, pickMax, true);
-  if (!chosen) return bestRarity(unit, room, data, pickMax, false);
-  if (room[chosen] !== Infinity) room[chosen] -= 1;
-  return chosen;
-}
-
-function bestRarity(unit, room, data, pickMax, respectRoom) {
-  let bestId = null;
-  let best = pickMax ? -Infinity : Infinity;
-  data.rarities.forEach((entry) => {
-    if (respectRoom && !(room[entry.id] > 0)) return;
-    const group = unit.type ? groupForType(unit.type, data) : null;
-    const value = pickMax ? boundsFor(entry.id, group, data).max : boundsFor(entry.id, group, data).min;
-    if (!Number.isFinite(value)) return;
-    if (pickMax ? value > best : value < best) {
-      best = value;
-      bestId = entry.id;
-    }
-  });
-  return bestId;
-}
-
-function groupForType(typeId, data) {
-  return data.types.find((entry) => entry.id === typeId)?.group || null;
-}
-
-function takeGroup(room, data, rarity, pickMax) {
-  let bestType = null;
-  let bestGroup = null;
-  let best = pickMax ? -Infinity : Infinity;
-  data.types.forEach((entry) => {
-    if (!(room[entry.id] > 0)) return;
-    const value = pickMax ? boundsFor(rarity, entry.group, data).max : boundsFor(rarity, entry.group, data).min;
-    if (!Number.isFinite(value)) return;
-    if (pickMax ? value > best : value < best) {
-      best = value;
-      bestType = entry.id;
-      bestGroup = entry.group;
-    }
-  });
-  if (!bestType) return null;
-  if (room[bestType] !== Infinity) room[bestType] -= 1;
-  return bestGroup;
-}
-
-function takeScale(room, data, pickMax) {
-  let bestSize = null;
-  let bestScale = null;
-  let best = pickMax ? -Infinity : Infinity;
-  data.sizePresets.forEach((size) => {
-    const id = String(size);
-    if (!(room[id] > 0)) return;
-    const scale = scaleFor(size, data);
-    const score = pickMax ? scale.maxScale : scale.minScale;
-    if (pickMax ? score > best : score < best) {
-      best = score;
-      bestSize = id;
-      bestScale = scale;
-    }
-  });
-  if (!bestScale) return scaleFor(null, data);
-  if (room[bestSize] !== Infinity) room[bestSize] -= 1;
-  return bestScale;
-}
-
-function boundsFor(rarity, group, data) {
-  const rows = data.estimates.filter((entry) => entry.rarity === rarity && (!group || entry.group === group));
-  return {
-    min: Math.min(...rows.map((entry) => entry.min)),
-    max: Math.max(...rows.map((entry) => entry.max))
-  };
-}
-
-function assignValues(matrix, pickMax) {
-  const count = matrix.length;
-  if (count > 12) return greedyValues(matrix, pickMax);
-
-  const full = (1 << count) - 1;
-  const score = new Map([[0, 0]]);
-  const choice = new Map();
-
-  for (let mask = 0; mask <= full; mask += 1) {
-    if (!score.has(mask)) continue;
-    const row = bitCount(mask);
-    if (row >= count) continue;
-    for (let column = 0; column < count; column += 1) {
-      if (mask & (1 << column)) continue;
-      const nextMask = mask | (1 << column);
-      const nextScore = score.get(mask) + matrix[row][column];
-      if (!score.has(nextMask) || (pickMax ? nextScore > score.get(nextMask) : nextScore < score.get(nextMask))) {
-        score.set(nextMask, nextScore);
-        choice.set(nextMask, column);
-      }
-    }
+function takeItem(items, used, slot, rooms) {
+  const attempts = [slot];
+  if (slot.size != null) attempts.push({ ...slot, size: null });
+  for (let index = 0; index < attempts.length; index += 1) {
+    const attempt = attempts[index];
+    const found = items.find((item) => !used.has(item.index) && fits(item, attempt, rooms));
+    if (found) return { item: found, slot: attempt };
   }
-
-  const values = new Array(count);
-  let mask = full;
-  for (let row = count - 1; row >= 0; row -= 1) {
-    const column = choice.get(mask);
-    values[row] = matrix[row][column];
-    mask ^= 1 << column;
-  }
-  return values;
+  return null;
 }
 
-function greedyValues(matrix, pickMax) {
-  const used = new Array(matrix.length).fill(false);
-  return matrix.map((row) => {
-    let bestColumn = 0;
-    let best = pickMax ? -Infinity : Infinity;
-    row.forEach((value, column) => {
-      if (used[column]) return;
-      if (pickMax ? value > best : value < best) {
-        best = value;
-        bestColumn = column;
-      }
-    });
-    used[bestColumn] = true;
-    return best;
-  });
+function fits(item, slot, rooms) {
+  if (!matchesFacts(item, slot)) return false;
+  if (!slot.rarity && !(rooms.rarities[item.rarity] > 0)) return false;
+  if (!slot.type && rooms.types && !(rooms.types[item.type] > 0)) return false;
+  if (slot.size == null && rooms.sizes && !(rooms.sizes[String(item.size)] > 0)) return false;
+  return true;
 }
 
-function applyScales(bases, sizes, data, pickMax) {
-  const scales = sizes.slice(0, bases.length).map((size) => scaleFor(size, data));
-  if (sizes.length > bases.length) {
-    const ranked = sizes
-      .map((size) => scaleFor(size, data))
-      .sort((a, b) => pickMax ? b.maxScale - a.maxScale : a.minScale - b.minScale);
-    scales.splice(0, scales.length, ...ranked.slice(0, bases.length));
-  }
-  while (scales.length < bases.length) scales.push(scaleFor(null, data));
-
-  const orderedBases = [...bases].sort((a, b) => b - a);
-  const orderedScales = [...scales].sort((a, b) => {
-    const left = pickMax ? a.maxScale : a.minScale;
-    const right = pickMax ? b.maxScale : b.minScale;
-    return pickMax ? right - left : left - right;
-  });
-
-  return orderedBases.reduce((sum, base, index) => {
-    const scale = pickMax ? orderedScales[index].maxScale : orderedScales[index].minScale;
-    return sum + base * scale;
-  }, 0);
+function matchesFacts(item, slot) {
+  if (slot.rarity && item.rarity !== slot.rarity) return false;
+  if (slot.type && !typeMatches(item.type, slot.type)) return false;
+  if (slot.size != null && item.size !== slot.size) return false;
+  return true;
 }
 
-function scaleFor(size, data) {
-  if (size == null) {
-    return {
-      minScale: Math.min(...data.sizeBands.map((band) => band.minScale)),
-      maxScale: Math.max(...data.sizeBands.map((band) => band.maxScale))
-    };
-  }
-  const band = data.sizeBands.find((entry) => size >= entry.minTiles && size <= entry.maxTiles);
-  return band ? { minScale: band.minScale, maxScale: band.maxScale } : { minScale: 1, maxScale: 1 };
+function typeMatches(itemType, slotType) {
+  if (itemType === slotType) return true;
+  const figurine = itemType === "figurine" || itemType === "collection";
+  const asked = slotType === "figurine" || slotType === "collection";
+  return figurine && asked;
 }
 
-function expandCounts(counts) {
-  const list = [];
-  Object.entries(counts || {}).forEach(([id, count]) => {
-    const total = Math.max(0, Math.min(COUNT_LIMIT, Number(count) || 0));
-    for (let index = 0; index < total; index += 1) list.push(id);
-  });
-  return list;
-}
-
-function tidyRange(min, max) {
-  const low = Math.floor(min / stepFor(min)) * stepFor(min);
-  const high = Math.ceil(max / stepFor(max)) * stepFor(max);
-  return { min: Math.max(0, low), max: Math.max(high, Math.max(0, low)) };
-}
-
-function stepFor(value) {
-  if (value >= 1000000) return 50000;
-  if (value >= 100000) return 10000;
-  if (value >= 10000) return 1000;
-  return 100;
-}
-
-function bitCount(value) {
-  let count = 0;
-  let bits = value;
-  while (bits) {
-    bits &= bits - 1;
-    count += 1;
-  }
-  return count;
+function spend(item, slot, rooms) {
+  if (!slot.rarity && rooms.rarities[item.rarity] !== Infinity) rooms.rarities[item.rarity] -= 1;
+  if (!slot.type && rooms.types && rooms.types[item.type] !== Infinity) rooms.types[item.type] -= 1;
+  if (slot.size == null && rooms.sizes && rooms.sizes[String(item.size)] !== Infinity) rooms.sizes[String(item.size)] -= 1;
 }
 
 function parseCoins(raw) {
@@ -1280,5 +1109,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=21").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=24").catch(() => {});
 }

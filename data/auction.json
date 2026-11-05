@@ -4,8 +4,8 @@
     "mode": "Magic Auction",
     "season": "7.1",
     "currency": "Magic Auction Coins",
-    "estimateDisclaimer": "Ranges are editable starting points, not official prices. Estimate worth uses how many of each rarity, type, and size are marked. Exact price is the total of prices the game has actually shown.",
-    "howToEdit": "Each estimates row is one rarity and one type group, in Magic Auction Coins, before the size nudge. sizeBands then multiply those bounds. Raise or lower a row when you learn a better range from your own auctions."
+    "estimateDisclaimer": "Estimate worth adds real treasure prices from data/treasures.json. Each treasure is used once. Common treasures are stored in that list as white and shown here as gray. Exact price is the total of prices the game has actually shown.",
+    "howToEdit": "Treasure prices live in data/treasures.json. The estimates rows are no longer used."
   },
   "houses": [
     { "id": "eruditio", "name": "Eruditio" },
@@ -47,7 +47,7 @@
       "label": "1–3 tiles",
       "minTiles": 1,
       "maxTiles": 3,
-      "minScale": 0.9,
+      "minScale": 1,
       "maxScale": 1
     },
     {
@@ -56,7 +56,7 @@
       "minTiles": 4,
       "maxTiles": 7,
       "minScale": 1,
-      "maxScale": 1.1
+      "maxScale": 1
     },
     {
       "id": "large",
@@ -64,36 +64,36 @@
       "minTiles": 8,
       "maxTiles": 64,
       "minScale": 1,
-      "maxScale": 1.25
+      "maxScale": 1
     }
   ],
   "estimates": [
-    { "rarity": "gray", "group": "collection", "min": 2000, "max": 25000 },
-    { "rarity": "green", "group": "collection", "min": 5000, "max": 60000 },
-    { "rarity": "blue", "group": "collection", "min": 15000, "max": 150000 },
-    { "rarity": "purple", "group": "collection", "min": 40000, "max": 400000 },
-    { "rarity": "gold", "group": "collection", "min": 120000, "max": 1200000 },
-    { "rarity": "red", "group": "collection", "min": 400000, "max": 3000000 },
+    { "rarity": "gray", "group": "collection", "min": 100, "max": 1500 },
+    { "rarity": "green", "group": "collection", "min": 400, "max": 3500 },
+    { "rarity": "blue", "group": "collection", "min": 25000, "max": 25000 },
+    { "rarity": "purple", "group": "collection", "min": 100000, "max": 100000 },
+    { "rarity": "gold", "group": "collection", "min": 500000, "max": 500000 },
+    { "rarity": "red", "group": "collection", "min": 5000000, "max": 5000000 },
 
-    { "rarity": "gray", "group": "gear", "min": 1000, "max": 12000 },
-    { "rarity": "green", "group": "gear", "min": 3000, "max": 30000 },
-    { "rarity": "blue", "group": "gear", "min": 8000, "max": 80000 },
-    { "rarity": "purple", "group": "gear", "min": 25000, "max": 200000 },
-    { "rarity": "gold", "group": "gear", "min": 80000, "max": 700000 },
-    { "rarity": "red", "group": "gear", "min": 200000, "max": 2000000 },
+    { "rarity": "gray", "group": "gear", "min": 100, "max": 1200 },
+    { "rarity": "green", "group": "gear", "min": 400, "max": 3500 },
+    { "rarity": "blue", "group": "gear", "min": 1600, "max": 10000 },
+    { "rarity": "purple", "group": "gear", "min": 4500, "max": 40000 },
+    { "rarity": "gold", "group": "gear", "min": 15000, "max": 180000 },
+    { "rarity": "red", "group": "gear", "min": 50000, "max": 3000000 },
 
-    { "rarity": "gray", "group": "consumable", "min": 500, "max": 6000 },
-    { "rarity": "green", "group": "consumable", "min": 1500, "max": 15000 },
-    { "rarity": "blue", "group": "consumable", "min": 4000, "max": 40000 },
-    { "rarity": "purple", "group": "consumable", "min": 12000, "max": 100000 },
-    { "rarity": "gold", "group": "consumable", "min": 40000, "max": 300000 },
-    { "rarity": "red", "group": "consumable", "min": 100000, "max": 800000 },
+    { "rarity": "gray", "group": "consumable", "min": 100, "max": 1500 },
+    { "rarity": "green", "group": "consumable", "min": 400, "max": 2100 },
+    { "rarity": "blue", "group": "consumable", "min": 1500, "max": 12000 },
+    { "rarity": "purple", "group": "consumable", "min": 3500, "max": 15000 },
+    { "rarity": "gold", "group": "consumable", "min": 8000, "max": 120000 },
+    { "rarity": "red", "group": "consumable", "min": 30000, "max": 1000000 },
 
-    { "rarity": "gray", "group": "info", "min": 2000, "max": 8000 },
-    { "rarity": "green", "group": "info", "min": 4000, "max": 12000 },
-    { "rarity": "blue", "group": "info", "min": 6000, "max": 18000 },
-    { "rarity": "purple", "group": "info", "min": 10000, "max": 25000 },
-    { "rarity": "gold", "group": "info", "min": 15000, "max": 40000 },
-    { "rarity": "red", "group": "info", "min": 20000, "max": 60000 }
+    { "rarity": "gray", "group": "info", "min": 500, "max": 500 },
+    { "rarity": "green", "group": "info", "min": 2000, "max": 2000 },
+    { "rarity": "blue", "group": "info", "min": 6000, "max": 6000 },
+    { "rarity": "purple", "group": "info", "min": 15000, "max": 15000 },
+    { "rarity": "gold", "group": "info", "min": 45000, "max": 45000 },
+    { "rarity": "red", "group": "info", "min": 100000, "max": 100000 }
   ]
 }
