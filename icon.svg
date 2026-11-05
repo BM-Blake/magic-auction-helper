@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Magic Auction">
+  <rect width="64" height="64" rx="16" fill="#171a22"/>
+  <rect x="14" y="14" width="16" height="16" rx="3" fill="#e4b15a"/>
+  <rect x="34" y="14" width="16" height="16" rx="3" fill="#d08a3a"/>
+  <rect x="14" y="34" width="16" height="16" rx="3" fill="#7dcea0"/>
+  <rect x="34" y="34" width="16" height="16" rx="3" fill="#e07a73"/>
+</svg>

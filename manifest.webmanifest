@@ -1,0 +1,18 @@
+{
+  "name": "Magic Auction Helper",
+  "short_name": "Auction",
+  "description": "Offline tracker for Magic Chess: Go Go Magic Auction.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#101218",
+  "theme_color": "#101218",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

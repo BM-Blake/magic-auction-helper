@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#101218">
+    <meta name="description" content="Offline Magic Auction tracker for Magic Chess: Go Go. Log revealed treasures and total their worth.">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Magic Auction Helper</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app">
+      <header class="top">
+        <div class="title-row">
+          <div>
+            <p class="eyebrow">Magic Chess: Go Go</p>
+            <h1>Magic Auction</h1>
+          </div>
+          <button type="button" id="clear" class="ghost">New auction</button>
+        </div>
+      </header>
+      <div class="sticky-worth">
+        <p id="network" class="status" hidden></p>
+        <section class="worth" aria-live="polite">
+          <p class="worth-label">Revealed pool</p>
+          <p id="worth-range" class="worth-range">0</p>
+          <p id="worth-detail" class="worth-detail">No treasures yet</p>
+        </section>
+      </div>
+
+      <main>
+        <p id="load-error" class="card error" hidden></p>
+
+        <form id="form" class="card">
+          <div class="form-head">
+            <h2 id="form-title">Add a revealed treasure</h2>
+            <button type="button" id="cancel-edit" class="text-btn" hidden>Cancel</button>
+          </div>
+
+          <fieldset>
+            <legend>Rarity</legend>
+            <div id="rarities" class="chips" role="group" aria-label="Rarity"></div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Type</legend>
+            <div id="types" class="chips" role="group" aria-label="Type"></div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Size</legend>
+            <div id="sizes" class="chips" role="group" aria-label="Size in tiles"></div>
+            <label class="field">
+              <span>Tiles</span>
+              <input id="size" inputmode="numeric" autocomplete="off" placeholder="Tile count, if the game shows it">
+            </label>
+          </fieldset>
+
+          <label class="field">
+            <span>Exact price</span>
+            <input id="price" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="Optional, such as 120k or 1.2m">
+          </label>
+          <p class="hint">If you enter a price, the total uses that number instead of the approximate range.</p>
+
+          <label class="field">
+            <span>Label</span>
+            <input id="label" maxlength="40" autocomplete="off" placeholder="Optional, such as Angela">
+          </label>
+
+          <p id="form-error" class="form-error" hidden></p>
+          <button type="submit" id="save" class="primary">Add to pool</button>
+        </form>
+
+        <section class="card" aria-labelledby="pool-heading">
+          <h2 id="pool-heading">This auction</h2>
+          <ul id="list" class="list"></ul>
+          <p id="empty" class="empty">Nothing revealed yet. Add a treasure when you see its rarity, type, size, or price.</p>
+        </section>
+
+        <details class="notes">
+          <summary>Prices and GitHub Pages</summary>
+          <p id="disclaimer"></p>
+          <p>
+            Push this folder to GitHub, then set Pages to deploy from the <code>main</code> branch root.
+            Paths are relative, so a project site at <code>/your-repo/</code> works. Open the page once while online.
+            After that, the service worker loads it with no connection.
+          </p>
+          <p>
+            Tune the bands in <code>data/auction.json</code>. After you change that file, bump <code>CACHE</code> in <code>sw.js</code> so an installed copy downloads the new ranges.
+          </p>
+        </details>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

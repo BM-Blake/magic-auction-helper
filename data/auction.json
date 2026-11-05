@@ -1,0 +1,93 @@
+{
+  "meta": {
+    "game": "Magic Chess: Go Go",
+    "mode": "Magic Auction",
+    "season": "7.1",
+    "currency": "Magic Auction Coins",
+    "estimateDisclaimer": "The ranges below are editable starting points, not official prices. Rarity and type choose the band. Size only nudges it, because a 1-tile treasure can be worth more than a large one. When the game shows a price, enter it — that exact number replaces the range.",
+    "howToEdit": "Each estimates row is one rarity and one type group, in Magic Auction Coins, before the size nudge. sizeBands then multiply those bounds. Raise or lower a row when you learn a better range from your own auctions."
+  },
+  "rarities": [
+    { "id": "gray", "name": "Gray", "color": "#c5ccd6", "ink": "#1b1e26" },
+    { "id": "green", "name": "Green", "color": "#5dce86", "ink": "#102216" },
+    { "id": "blue", "name": "Blue", "color": "#8eb8ff", "ink": "#10182a" },
+    { "id": "purple", "name": "Purple", "color": "#c9a6ff", "ink": "#1c1028" },
+    { "id": "gold", "name": "Gold", "color": "#e4b15a", "ink": "#2a2112" },
+    { "id": "red", "name": "Red", "color": "#ff8d86", "ink": "#2a1010" }
+  ],
+  "types": [
+    { "id": "figurine", "name": "Figurine", "group": "collection" },
+    { "id": "collection", "name": "Collection", "group": "collection" },
+    { "id": "weapon", "name": "Weapon", "group": "gear" },
+    { "id": "armor", "name": "Armor", "group": "gear" },
+    { "id": "accessory", "name": "Accessory", "group": "gear" },
+    { "id": "gem", "name": "Gem", "group": "gear" },
+    { "id": "material", "name": "Material", "group": "consumable" },
+    { "id": "mineral", "name": "Mineral", "group": "consumable" },
+    { "id": "potion", "name": "Potion", "group": "consumable" },
+    { "id": "food", "name": "Food", "group": "consumable" },
+    { "id": "auction-item", "name": "Auction Item", "group": "info" }
+  ],
+  "groups": [
+    { "id": "collection", "label": "Figurines and collection pieces" },
+    { "id": "gear", "label": "Weapons, armor, accessories, and gems" },
+    { "id": "consumable", "label": "Materials, minerals, potions, and food" },
+    { "id": "info", "label": "Auction items used for clues" }
+  ],
+  "sizePresets": [1, 2, 4, 6, 8, 9, 12, 16],
+  "sizeBands": [
+    {
+      "id": "small",
+      "label": "1–3 tiles",
+      "minTiles": 1,
+      "maxTiles": 3,
+      "minScale": 0.9,
+      "maxScale": 1
+    },
+    {
+      "id": "medium",
+      "label": "4–7 tiles",
+      "minTiles": 4,
+      "maxTiles": 7,
+      "minScale": 1,
+      "maxScale": 1.1
+    },
+    {
+      "id": "large",
+      "label": "8+ tiles",
+      "minTiles": 8,
+      "maxTiles": 64,
+      "minScale": 1,
+      "maxScale": 1.25
+    }
+  ],
+  "estimates": [
+    { "rarity": "gray", "group": "collection", "min": 2000, "max": 25000 },
+    { "rarity": "green", "group": "collection", "min": 5000, "max": 60000 },
+    { "rarity": "blue", "group": "collection", "min": 15000, "max": 150000 },
+    { "rarity": "purple", "group": "collection", "min": 40000, "max": 400000 },
+    { "rarity": "gold", "group": "collection", "min": 120000, "max": 1200000 },
+    { "rarity": "red", "group": "collection", "min": 400000, "max": 3000000 },
+
+    { "rarity": "gray", "group": "gear", "min": 1000, "max": 12000 },
+    { "rarity": "green", "group": "gear", "min": 3000, "max": 30000 },
+    { "rarity": "blue", "group": "gear", "min": 8000, "max": 80000 },
+    { "rarity": "purple", "group": "gear", "min": 25000, "max": 200000 },
+    { "rarity": "gold", "group": "gear", "min": 80000, "max": 700000 },
+    { "rarity": "red", "group": "gear", "min": 200000, "max": 2000000 },
+
+    { "rarity": "gray", "group": "consumable", "min": 500, "max": 6000 },
+    { "rarity": "green", "group": "consumable", "min": 1500, "max": 15000 },
+    { "rarity": "blue", "group": "consumable", "min": 4000, "max": 40000 },
+    { "rarity": "purple", "group": "consumable", "min": 12000, "max": 100000 },
+    { "rarity": "gold", "group": "consumable", "min": 40000, "max": 300000 },
+    { "rarity": "red", "group": "consumable", "min": 100000, "max": 800000 },
+
+    { "rarity": "gray", "group": "info", "min": 2000, "max": 8000 },
+    { "rarity": "green", "group": "info", "min": 4000, "max": 12000 },
+    { "rarity": "blue", "group": "info", "min": 6000, "max": 18000 },
+    { "rarity": "purple", "group": "info", "min": 10000, "max": 25000 },
+    { "rarity": "gold", "group": "info", "min": 15000, "max": 40000 },
+    { "rarity": "red", "group": "info", "min": 20000, "max": 60000 }
+  ]
+}
