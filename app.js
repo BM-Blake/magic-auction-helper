@@ -733,6 +733,7 @@ function endGame() {
 }
 
 function render() {
+  if (resolveUnknown()) persist();
   const counts = tally(state.board.items, state.data);
   renderGroup($("#rarities"), $("#rarity-group"), "rarities", state.data.rarities.map((entry) => ({
     id: entry.id,
@@ -759,6 +760,55 @@ function render() {
   renderEstimate();
   renderExact();
   renderTreasureTotal();
+}
+
+function resolveUnknown() {
+  const board = state.board;
+  if (!board || !state.data) return false;
+  const real = state.data.rarities.filter((entry) => entry.id !== "unknown");
+  const missing = real.filter((entry) => knownRarityCount(board, entry.id) == null);
+  if (missing.length !== 1) return false;
+  const knownSum = real.reduce((sum, entry) => {
+    const count = knownRarityCount(board, entry.id);
+    return count == null ? sum : sum + count;
+  }, 0);
+  const listedUnknown = board.items.filter((item) => item.rarity === "unknown").length;
+  const unknownMax = board.maxCounts.rarities.unknown;
+  let remaining = null;
+  if (board.treasureTotal != null) remaining = board.treasureTotal - knownSum;
+  else if (Number.isInteger(unknownMax)) remaining = unknownMax;
+  else if (listedUnknown > 0) remaining = listedUnknown;
+  if (remaining == null || remaining < 0 || listedUnknown > remaining) return false;
+  let changed = false;
+  real.forEach((entry) => {
+    const count = entry.id === missing[0].id ? remaining : knownRarityCount(board, entry.id);
+    if (board.maxCounts.rarities[entry.id] !== count) {
+      board.maxCounts.rarities[entry.id] = count;
+      changed = true;
+    }
+  });
+  board.items.forEach((item) => {
+    if (item.rarity !== "unknown") return;
+    item.rarity = missing[0].id;
+    changed = true;
+  });
+  if (Object.prototype.hasOwnProperty.call(board.maxCounts.rarities, "unknown")) {
+    delete board.maxCounts.rarities.unknown;
+    changed = true;
+  }
+  if (state.selected && state.selected.kind === "rarities" && state.selected.id === "unknown") {
+    state.selected = remaining > 0 ? { kind: "rarities", id: missing[0].id } : null;
+    changed = true;
+  }
+  return changed;
+}
+
+function knownRarityCount(board, id) {
+  const max = board.maxCounts?.rarities?.[id];
+  const listed = board.items.filter((item) => item.rarity === id).length;
+  if (Number.isInteger(max)) return Math.max(max, listed);
+  if (listed > 0) return listed;
+  return null;
 }
 
 function renderTreasureTotal() {
@@ -936,9 +986,10 @@ function estimateSlots(board) {
   const active = usesMaxConstraint(board);
   const slots = [];
   (board.items || []).forEach((item) => {
-    if (!item.rarity && !active) return;
+    const rarity = item.rarity && item.rarity !== "unknown" ? item.rarity : null;
+    if (!rarity && !item.type && item.size == null && !active) return;
     slots.push({
-      rarity: item.rarity || null,
+      rarity,
       type: item.type || null,
       size: item.size == null ? null : item.size
     });
@@ -954,7 +1005,7 @@ function estimateSlots(board) {
 
 function openRooms(board, data) {
   return {
-    rarities: roomFor(board, data.rarities.map((entry) => entry.id), "rarities", (item) => item.rarity || ""),
+    rarities: roomFor(board, data.rarities.map((entry) => entry.id).filter((id) => id !== "unknown"), "rarities", (item) => item.rarity || ""),
     types: roomFor(board, data.types.map((entry) => entry.id), "types", (item) => item.type || ""),
     sizes: roomFor(board, data.sizePresets.map(String), "sizes", (item) => item.size == null ? "" : String(item.size))
   };
@@ -984,7 +1035,7 @@ function takeItem(items, used, slot, rooms) {
 
 function fits(item, slot, rooms) {
   if (!matchesFacts(item, slot)) return false;
-  if (!slot.rarity && !(rooms.rarities[item.rarity] > 0)) return false;
+  if (!slot.rarity && rooms.rarities && !(rooms.rarities[item.rarity] > 0)) return false;
   if (!slot.type && rooms.types && !(rooms.types[item.type] > 0)) return false;
   if (slot.size == null && rooms.sizes && !(rooms.sizes[String(item.size)] > 0)) return false;
   return true;
@@ -1005,7 +1056,7 @@ function typeMatches(itemType, slotType) {
 }
 
 function spend(item, slot, rooms) {
-  if (!slot.rarity && rooms.rarities[item.rarity] !== Infinity) rooms.rarities[item.rarity] -= 1;
+  if (!slot.rarity && rooms.rarities && rooms.rarities[item.rarity] !== Infinity) rooms.rarities[item.rarity] -= 1;
   if (!slot.type && rooms.types && rooms.types[item.type] !== Infinity) rooms.types[item.type] -= 1;
   if (slot.size == null && rooms.sizes && rooms.sizes[String(item.size)] !== Infinity) rooms.sizes[String(item.size)] -= 1;
 }
@@ -1109,5 +1160,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=24").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=25").catch(() => {});
 }

@@ -19,7 +19,8 @@
     { "id": "blue", "name": "Blue", "color": "#8eb8ff", "ink": "#10182a" },
     { "id": "purple", "name": "Purple", "color": "#c9a6ff", "ink": "#1c1028" },
     { "id": "gold", "name": "Gold", "color": "#e4b15a", "ink": "#2a2112" },
-    { "id": "red", "name": "Red", "color": "#ff8d86", "ink": "#2a1010" }
+    { "id": "red", "name": "Red", "color": "#ff8d86", "ink": "#2a1010" },
+    { "id": "unknown", "name": "Unknown", "color": "#3a4154", "ink": "#f6f1e7" }
   ],
   "types": [
     { "id": "figurine", "name": "Figurine", "group": "collection" },
