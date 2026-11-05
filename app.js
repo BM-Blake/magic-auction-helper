@@ -7,7 +7,9 @@ const state = {
   data: null,
   board: null,
   selected: null,
-  draft: emptyDraft()
+  editing: null,
+  mode: "new",
+  groups: [emptyGroup()]
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -32,10 +34,9 @@ async function init() {
     return;
   }
 
-  $("#disclaimer").textContent = state.data.meta.estimateDisclaimer;
   state.board = loadBoard();
   buildHouseOptions();
-  buildAddChoices();
+  renderGroups();
   render();
   registerWorker();
 }
@@ -46,15 +47,20 @@ function bindStaticEvents() {
   $("#fab").addEventListener("click", () => setSheet($("#sheet").hidden));
   $("#close-sheet").addEventListener("click", () => setSheet(false));
   $("#sheet").addEventListener("submit", onAdd);
-  $("#sheet").addEventListener("click", onDraftClick);
+  $("#sheet").addEventListener("click", onSheetClick);
+  $("#sheet").addEventListener("input", onSheetInput);
+  $("#sheet").addEventListener("change", onSheetInput);
   $("#rarities").addEventListener("click", onSummaryClick);
   $("#types").addEventListener("click", onSummaryClick);
   $("#sizes").addEventListener("click", onSummaryClick);
   $("#detail-list").addEventListener("click", onDetailClick);
+  $("#detail-list").addEventListener("submit", onDetailSubmit);
+  $("#treasure-total").addEventListener("input", onTreasureTotal);
+  $("#treasure-total").addEventListener("blur", onTreasureTotalBlur);
 }
 
-function emptyDraft() {
-  return { rarity: "", type: "", size: "" };
+function emptyGroup() {
+  return { rarity: "", type: "", size: "", count: "1", price: "", use: "known" };
 }
 
 function buildHouseOptions() {
@@ -71,16 +77,128 @@ function buildHouseOptions() {
   house.value = state.board.house;
 }
 
-function buildAddChoices() {
-  state.data.rarities.forEach((rarity) => {
-    $("#add-rarities").appendChild(choiceChip("rarity", rarity.id, rarity.name, rarity.color, rarity.ink));
+function renderGroups() {
+  const root = $("#groups");
+  if (!root || !state.data) return;
+  root.replaceChildren();
+  state.groups.forEach((group, index) => {
+    root.appendChild(buildGroupElement(group, index));
   });
-  state.data.types.forEach((type) => {
-    $("#add-types").appendChild(choiceChip("type", type.id, type.name));
+  syncMode();
+}
+
+function buildGroupElement(group, index) {
+  const entry = document.createElement("div");
+  entry.className = group.use === "max" ? "entry is-max" : "entry";
+  entry.dataset.group = String(index);
+
+  const head = document.createElement("div");
+  head.className = "entry-head";
+  const countLabel = document.createElement("label");
+  countLabel.className = "field";
+  const countName = document.createElement("span");
+  countName.textContent = "Count";
+  const countInput = document.createElement("input");
+  countInput.className = "group-count";
+  countInput.type = "number";
+  countInput.min = "1";
+  countInput.step = "1";
+  countInput.inputMode = "numeric";
+  countInput.autocomplete = "off";
+  countInput.enterKeyHint = "done";
+  countInput.value = group.count;
+  countInput.setAttribute("aria-label", `Count for group ${index + 1}`);
+  countLabel.append(countName, countInput);
+  head.appendChild(countLabel);
+
+  const useLabel = document.createElement("label");
+  useLabel.className = "field count-use";
+  const useName = document.createElement("span");
+  useName.className = "visually-hidden";
+  useName.textContent = "How this count is used";
+  const useSelect = document.createElement("select");
+  useSelect.className = "group-use";
+  useSelect.setAttribute("aria-label", `How to use the count for group ${index + 1}`);
+  [
+    ["known", "Known count"],
+    ["max", "Max"],
+    ["both", "Both"]
+  ].forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    useSelect.appendChild(option);
   });
-  state.data.sizePresets.forEach((size) => {
-    $("#add-sizes").appendChild(choiceChip("size", String(size), String(size)));
+  useSelect.value = group.use === "max" || group.use === "both" ? group.use : "known";
+  useLabel.append(useName, useSelect);
+  head.appendChild(useLabel);
+
+  if (state.groups.length > 1) {
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "text-btn";
+    remove.dataset.removeGroup = String(index);
+    remove.textContent = "Remove";
+    head.appendChild(remove);
+  }
+  entry.appendChild(head);
+  entry.appendChild(priceField(group, index));
+
+  entry.appendChild(choiceField("Rarity", "rarity", "add-rarities", group, state.data.rarities.map((rarity) => ({
+    id: rarity.id,
+    label: rarity.name,
+    color: rarity.color,
+    ink: rarity.ink
+  })), "Rarity"));
+  entry.appendChild(choiceField("Type", "type", "", group, state.data.types.map((type) => ({
+    id: type.id,
+    label: type.name
+  })), "Type"));
+  entry.appendChild(choiceField("Size", "size", "add-sizes", group, state.data.sizePresets.map((size) => ({
+    id: String(size),
+    label: String(size)
+  })), "Size in tiles"));
+  return entry;
+}
+
+function priceField(group, index) {
+  const priceLabel = document.createElement("label");
+  priceLabel.className = "field";
+  const priceName = document.createElement("span");
+  priceName.textContent = "Exact price";
+  const priceInput = document.createElement("input");
+  priceInput.className = "group-price";
+  priceInput.inputMode = "text";
+  priceInput.autocomplete = "off";
+  priceInput.enterKeyHint = "done";
+  priceInput.placeholder = pricePlaceholder(group.count);
+  priceInput.value = group.price;
+  priceInput.setAttribute("aria-label", `Exact price for group ${index + 1}`);
+  priceLabel.append(priceName, priceInput);
+  return priceLabel;
+}
+
+function pricePlaceholder(count) {
+  const total = parseCount(count);
+  if (total != null && total > 1) return "Optional, one each: 120k, 80k";
+  return "Optional, such as 120k or 1.2m";
+}
+
+function choiceField(legendText, kind, extraClass, group, options, ariaLabel) {
+  const fieldset = document.createElement("fieldset");
+  const legend = document.createElement("legend");
+  legend.textContent = legendText;
+  const chips = document.createElement("div");
+  chips.className = extraClass ? `chips ${extraClass}` : "chips";
+  chips.setAttribute("role", "group");
+  chips.setAttribute("aria-label", ariaLabel);
+  options.forEach((option) => {
+    const button = choiceChip(kind, option.id, option.label, option.color, option.ink);
+    button.setAttribute("aria-pressed", group[kind] === option.id ? "true" : "false");
+    chips.appendChild(button);
   });
+  fieldset.append(legend, chips);
+  return fieldset;
 }
 
 function choiceChip(kind, id, label, color, ink) {
@@ -107,51 +225,333 @@ function onHouseChange() {
 function setSheet(open) {
   $("#sheet").hidden = !open;
   $("#fab").textContent = open ? "×" : "+";
-  $("#fab").setAttribute("aria-label", open ? "Close add form" : "Add a revealed treasure");
-  if (open) $("#new-price").focus();
+  $("#fab").setAttribute("aria-label", open ? "Close add form" : "Add information");
+  if (!open) return;
+  const count = $("#sheet").querySelector(".group-count");
+  if (count) count.focus();
 }
 
-function onDraftClick(event) {
+function onSheetClick(event) {
+  const modeButton = event.target.closest("[data-mode]");
+  if (modeButton) {
+    state.mode = modeButton.dataset.mode;
+    syncMode();
+    hideError();
+    return;
+  }
+
+  const remove = event.target.closest("[data-remove-group]");
+  if (remove) {
+    removeGroup(Number(remove.dataset.removeGroup));
+    return;
+  }
+
+  if (event.target.closest("#add-group")) {
+    captureInputs();
+    state.groups.push(emptyGroup());
+    renderGroups();
+    hideError();
+    const counts = $("#sheet").querySelectorAll(".group-count");
+    const last = counts[counts.length - 1];
+    if (last) last.focus();
+    return;
+  }
+
   const button = event.target.closest("[data-pick]");
   if (!button) return;
+  const entry = button.closest("[data-group]");
+  if (!entry) return;
+  const group = state.groups[Number(entry.dataset.group)];
+  if (!group) return;
   const kind = button.dataset.pick;
-  state.draft[kind] = state.draft[kind] === button.dataset.id ? "" : button.dataset.id;
-  syncDraft();
+  group[kind] = group[kind] === button.dataset.id ? "" : button.dataset.id;
+  syncGroupChips(entry, group);
   hideError();
 }
 
-function syncDraft() {
-  document.querySelectorAll("[data-pick]").forEach((button) => {
-    button.setAttribute("aria-pressed", state.draft[button.dataset.pick] === button.dataset.id ? "true" : "false");
+function onSheetInput(event) {
+  const entry = event.target.closest("[data-group]");
+  if (!entry) return;
+  const group = state.groups[Number(entry.dataset.group)];
+  if (!group) return;
+  if (event.target.classList.contains("group-count")) {
+    group.count = event.target.value;
+    const price = entry.querySelector(".group-price");
+    if (price) price.placeholder = pricePlaceholder(group.count);
+  }
+  if (event.target.classList.contains("group-price")) group.price = event.target.value;
+  if (event.target.classList.contains("group-use")) {
+    group.use = event.target.value;
+    entry.classList.toggle("is-max", group.use === "max");
+  }
+  hideError();
+}
+
+function syncGroupChips(entry, group) {
+  entry.querySelectorAll("[data-pick]").forEach((button) => {
+    button.setAttribute("aria-pressed", group[button.dataset.pick] === button.dataset.id ? "true" : "false");
   });
+}
+
+function syncMode() {
+  document.querySelectorAll("[data-mode]").forEach((button) => {
+    button.setAttribute("aria-pressed", button.dataset.mode === state.mode ? "true" : "false");
+  });
+  const hint = $("#mode-hint");
+  const hints = {
+    new: "Each count adds that many treasures.",
+    update: "Fills listed treasures first, then adds any remainder."
+  };
+  if (hint) hint.textContent = hints[state.mode] || hints.new;
+  const submit = $("#sheet button[type='submit']");
+  if (submit) submit.textContent = state.mode === "update" ? "Update" : "Add";
+}
+
+function captureInputs() {
+  document.querySelectorAll("#groups .entry").forEach((entry) => {
+    const group = state.groups[Number(entry.dataset.group)];
+    if (!group) return;
+    const count = entry.querySelector(".group-count");
+    const price = entry.querySelector(".group-price");
+    const use = entry.querySelector(".group-use");
+    if (count) group.count = count.value;
+    if (price) group.price = price.value;
+    if (use) group.use = use.value;
+  });
+}
+
+function removeGroup(index) {
+  if (state.groups.length < 2) return;
+  captureInputs();
+  state.groups.splice(index, 1);
+  renderGroups();
+  hideError();
+}
+
+function resetComposer() {
+  state.mode = "new";
+  state.groups = [emptyGroup()];
+  renderGroups();
+  hideError();
 }
 
 function onAdd(event) {
   event.preventDefault();
-  const raw = $("#new-price").value;
-  const price = parseCoins(raw);
-  if (raw.trim() && Number.isNaN(price)) {
-    showError("Enter a price like 120000, 120k, or 1.2m.");
-    return;
+  if (!state.board) return;
+  captureInputs();
+  const parsed = [];
+  for (let index = 0; index < state.groups.length; index += 1) {
+    const group = state.groups[index];
+    const count = parseCount(group.count);
+    if (count == null) {
+      showError("Enter a whole number of at least 1 for each group.");
+      return;
+    }
+    const use = group.use === "max" || group.use === "both" ? group.use : "known";
+    const prices = use === "max" ? { prices: [] } : parsePriceList(group.price);
+    if (prices.error) {
+      showError(prices.error);
+      return;
+    }
+    if (prices.prices.length > 1 && prices.prices.length !== count) {
+      const expected = count === 1
+        ? "A comma separates prices. For one price, write 1200000 or 1.2m."
+        : `Enter ${count} prices separated by commas, or one price for all of them.`;
+      showError(expected);
+      return;
+    }
+    const spec = {
+      count,
+      rarity: group.rarity || "",
+      type: group.type || "",
+      size: group.size ? Number(group.size) : null,
+      prices: prices.prices,
+      use
+    };
+    const picks = categoryPicks(spec);
+    if (use === "max" && picks.length !== 1) {
+      showError("Choose one rarity, type, or size for a max.");
+      return;
+    }
+    if (use === "both" && picks.length === 0) {
+      showError("Choose a rarity, type, or size to save the count and the max together.");
+      return;
+    }
+    parsed.push(spec);
   }
-  if (!state.draft.rarity && !state.draft.type && !state.draft.size && price == null) {
-    showError("Choose a rarity, type, size, or price.");
-    return;
+
+  const maxSpecs = parsed.filter((spec) => spec.use === "max" || spec.use === "both");
+  const itemSpecs = parsed.filter((spec) => spec.use !== "max");
+  if (itemSpecs.length && state.mode === "update") {
+    const touched = applyUpdates(itemSpecs);
+    if (touched === 0) {
+      showError("Nothing could be updated or created.");
+      return;
+    }
+  } else {
+    itemSpecs.forEach((spec) => {
+      for (let index = 0; index < spec.count; index += 1) {
+        state.board.items.push(blankItem(factFrom(spec, index)));
+      }
+    });
   }
-  hideError();
-  state.board.items.push({
-    id: createId(),
-    rarity: state.draft.rarity,
-    type: state.draft.type,
-    size: state.draft.size ? Number(state.draft.size) : null,
-    price
-  });
-  state.draft = emptyDraft();
-  $("#new-price").value = "";
-  syncDraft();
+  applyMaxes(maxSpecs);
+
+  resetComposer();
   setSheet(false);
   persist();
   render();
+}
+
+function applyMaxes(specs) {
+  specs.forEach((spec) => {
+    categoryPicks(spec).forEach((picked) => {
+      state.board.maxCounts[picked.kind][picked.id] = spec.count;
+    });
+  });
+}
+
+function categoryPicks(spec) {
+  const picks = [];
+  if (spec.rarity) picks.push({ kind: "rarities", id: spec.rarity });
+  if (spec.type) picks.push({ kind: "types", id: spec.type });
+  if (spec.size != null) picks.push({ kind: "sizes", id: String(spec.size) });
+  return picks;
+}
+
+function emptyMaxCounts() {
+  return { rarities: {}, types: {}, sizes: {} };
+}
+
+function categoryMax(selected) {
+  if (!selected || !state.board.maxCounts) return null;
+  const value = state.board.maxCounts[selected.kind]?.[selected.id];
+  return Number.isInteger(value) ? value : null;
+}
+
+function hasBoardInfo() {
+  if (!state.board) return false;
+  if (state.board.items.length || state.board.treasureTotal != null) return true;
+  const maxes = state.board.maxCounts;
+  if (!maxes) return false;
+  return ["rarities", "types", "sizes"].some((kind) => Object.keys(maxes[kind] || {}).length > 0);
+}
+
+function applyUpdates(specs) {
+  let touched = 0;
+  specs.forEach((spec) => {
+    const match = factFrom(spec, 0);
+    if (spec.prices && spec.prices.length > 1) delete match.price;
+    if (!Object.keys(match).length && !(spec.prices && spec.prices.length)) {
+      for (let index = 0; index < spec.count; index += 1) {
+        state.board.items.push(blankItem({}));
+        touched += 1;
+      }
+      return;
+    }
+
+    const ranked = state.board.items
+      .map((item, index) => ({ item, index, score: updateScore(item, match) }))
+      .filter((entry) => entry.score != null)
+      .sort((a, b) => b.score - a.score || a.index - b.index);
+    const take = Math.min(spec.count, ranked.length);
+    for (let index = 0; index < take; index += 1) {
+      writeFact(ranked[index].item, factFrom(spec, index));
+      touched += 1;
+    }
+    for (let index = take; index < spec.count; index += 1) {
+      state.board.items.push(blankItem(factFrom(spec, index)));
+      touched += 1;
+    }
+  });
+  return touched;
+}
+
+function factFrom(spec, index) {
+  const fact = {};
+  if (spec.rarity) fact.rarity = spec.rarity;
+  if (spec.type) fact.type = spec.type;
+  if (spec.size != null) fact.size = spec.size;
+  const price = priceAt(spec, index);
+  if (price != null) fact.price = price;
+  return fact;
+}
+
+function priceAt(spec, index) {
+  if (!spec.prices || !spec.prices.length) return null;
+  if (spec.prices.length === 1) return spec.prices[0];
+  return spec.prices[index] ?? null;
+}
+
+function parsePriceList(raw) {
+  const parts = splitPriceParts(raw);
+  if (!parts.length) return { prices: [] };
+  const prices = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    const price = parseCoins(parts[index]);
+    if (Number.isNaN(price)) {
+      return { error: "Enter a price like 120000, 120k, or 1.2m. A comma only separates prices." };
+    }
+    prices.push(price);
+  }
+  return { prices };
+}
+
+function splitPriceParts(raw) {
+  return String(raw ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function updateScore(item, fact) {
+  let score = 0;
+  let missing = 0;
+  const keys = Object.keys(fact);
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+    if (fieldEmpty(item, key)) {
+      missing += 1;
+      continue;
+    }
+    if (!sameFact(item[key], fact[key])) return null;
+    score += 1;
+  }
+  return missing > 0 ? score : null;
+}
+
+function sameFact(current, wanted) {
+  if (typeof wanted === "number") return Number(current) === wanted;
+  return current === wanted;
+}
+
+function writeFact(item, fact) {
+  Object.keys(fact).forEach((key) => {
+    if (fieldEmpty(item, key)) item[key] = fact[key];
+  });
+}
+
+function fieldEmpty(item, key) {
+  const value = item[key];
+  return value == null || value === "";
+}
+
+function blankItem(fact) {
+  return {
+    id: createId(),
+    rarity: fact.rarity || "",
+    type: fact.type || "",
+    size: fact.size == null ? null : fact.size,
+    price: fact.price == null ? null : fact.price
+  };
+}
+
+function parseCount(raw) {
+  const text = String(raw ?? "").trim();
+  if (!/^\d+$/.test(text)) return null;
+  const value = Number(text);
+  if (!Number.isInteger(value) || value < 1) return null;
+  return value;
 }
 
 function onSummaryClick(event) {
@@ -160,27 +560,168 @@ function onSummaryClick(event) {
   const next = { kind: button.dataset.open, id: button.dataset.id };
   const same = state.selected && state.selected.kind === next.kind && state.selected.id === next.id;
   state.selected = same ? null : next;
+  state.editing = null;
   render();
 }
 
 function onDetailClick(event) {
+  const pick = event.target.closest("[data-edit]");
+  if (pick) {
+    const wasOn = pick.getAttribute("aria-pressed") === "true";
+    pick.closest(".chips").querySelectorAll("[data-edit]").forEach((button) => {
+      button.setAttribute("aria-pressed", "false");
+    });
+    if (!wasOn) pick.setAttribute("aria-pressed", "true");
+    const error = pick.closest(".detail-editor")?.querySelector(".form-error");
+    if (error) error.hidden = true;
+    return;
+  }
+
+  const cancel = event.target.closest("[data-cancel-detail]");
+  if (cancel) {
+    state.editing = null;
+    render();
+    return;
+  }
+
+  const opener = event.target.closest("[data-detail]");
+  if (opener) {
+    state.editing = state.editing === opener.dataset.detail ? null : opener.dataset.detail;
+    render();
+    const price = document.querySelector(".detail-editor .detail-price-input");
+    if (price) price.focus();
+    return;
+  }
+
   const button = event.target.closest("[data-remove]");
   if (!button) return;
   state.board.items = state.board.items.filter((item) => item.id !== button.dataset.remove);
+  if (state.editing === button.dataset.remove) state.editing = null;
   if (state.selected && !matchingItems().length) state.selected = null;
   persist();
   render();
 }
 
+function onDetailSubmit(event) {
+  event.preventDefault();
+  const form = event.target.closest("[data-editor]");
+  if (!form || !state.board) return;
+  const item = state.board.items.find((entry) => entry.id === form.dataset.editor);
+  if (!item) return;
+
+  const chosen = (kind) => {
+    const button = form.querySelector(`[data-edit="${kind}"][aria-pressed="true"]`);
+    return button ? button.dataset.id : "";
+  };
+  const raw = form.querySelector(".detail-price-input")?.value || "";
+  const price = parseCoins(raw);
+  if (String(raw).trim() && Number.isNaN(price)) {
+    const error = form.querySelector(".form-error");
+    error.hidden = false;
+    error.textContent = "Enter a price like 120000, 120k, or 1.2m. Do not put commas inside one price.";
+    return;
+  }
+
+  item.rarity = chosen("rarity");
+  item.type = chosen("type");
+  item.size = chosen("size") ? Number(chosen("size")) : null;
+  item.price = String(raw).trim() ? price : null;
+  state.editing = null;
+  if (state.selected && !matchingItems().length) state.selected = null;
+  persist();
+  render();
+}
+
+function buildDetailEditor(item) {
+  const form = document.createElement("form");
+  form.className = "detail-editor";
+  form.dataset.editor = item.id;
+
+  const priceLabel = document.createElement("label");
+  priceLabel.className = "field";
+  const priceName = document.createElement("span");
+  priceName.textContent = "Exact price";
+  const priceInput = document.createElement("input");
+  priceInput.className = "detail-price-input";
+  priceInput.inputMode = "decimal";
+  priceInput.autocomplete = "off";
+  priceInput.enterKeyHint = "done";
+  priceInput.placeholder = "Optional, such as 120k or 1.2m";
+  priceInput.value = item.price == null ? "" : String(item.price);
+  priceInput.setAttribute("aria-label", "Exact price");
+  priceLabel.append(priceName, priceInput);
+  form.appendChild(priceLabel);
+
+  form.appendChild(editChoices("Rarity", "rarity", "add-rarities", item.rarity || "", state.data.rarities.map((rarity) => ({
+    id: rarity.id,
+    label: rarity.name,
+    color: rarity.color,
+    ink: rarity.ink
+  })), "Rarity"));
+  form.appendChild(editChoices("Type", "type", "", item.type || "", state.data.types.map((type) => ({
+    id: type.id,
+    label: type.name
+  })), "Type"));
+  form.appendChild(editChoices("Size", "size", "add-sizes", item.size == null ? "" : String(item.size), state.data.sizePresets.map((size) => ({
+    id: String(size),
+    label: String(size)
+  })), "Size in tiles"));
+
+  const error = document.createElement("p");
+  error.className = "form-error";
+  error.hidden = true;
+
+  const actions = document.createElement("div");
+  actions.className = "detail-editor-actions";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "text-btn";
+  cancel.dataset.cancelDetail = item.id;
+  cancel.textContent = "Cancel";
+  const save = document.createElement("button");
+  save.type = "submit";
+  save.className = "primary";
+  save.textContent = "Save";
+  actions.append(cancel, save);
+  form.append(error, actions);
+  return form;
+}
+
+function editChoices(legendText, kind, extraClass, current, options, ariaLabel) {
+  const fieldset = document.createElement("fieldset");
+  const legend = document.createElement("legend");
+  legend.textContent = legendText;
+  const chips = document.createElement("div");
+  chips.className = extraClass ? `chips ${extraClass}` : "chips";
+  chips.setAttribute("role", "group");
+  chips.setAttribute("aria-label", ariaLabel);
+  options.forEach((option) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip";
+    button.dataset.edit = kind;
+    button.dataset.id = option.id;
+    button.textContent = option.label;
+    button.setAttribute("aria-pressed", current === option.id ? "true" : "false");
+    if (option.color) {
+      button.style.setProperty("--chip", option.color);
+      button.style.setProperty("--chip-ink", option.ink);
+    }
+    chips.appendChild(button);
+  });
+  fieldset.append(legend, chips);
+  return fieldset;
+}
+
 function endGame() {
   if (!state.board) return;
-  if (state.board.items.length && !window.confirm("End this game and clear the revealed information?")) return;
+  if (hasBoardInfo() && !window.confirm("End this game and clear the revealed information?")) return;
   state.board.items = [];
+  state.board.treasureTotal = null;
+  state.board.maxCounts = emptyMaxCounts();
   state.selected = null;
-  state.draft = emptyDraft();
-  $("#new-price").value = "";
-  syncDraft();
-  hideError();
+  state.editing = null;
+  resetComposer();
   setSheet(false);
   persist();
   render();
@@ -192,28 +733,59 @@ function render() {
     id: entry.id,
     label: entry.name,
     count: counts.rarities[entry.id] || 0,
+    max: state.board.maxCounts.rarities[entry.id],
     color: entry.color,
     ink: entry.ink
   })));
   renderGroup($("#types"), $("#type-group"), "types", state.data.types.map((entry) => ({
     id: entry.id,
     label: entry.name,
-    count: counts.types[entry.id] || 0
+    count: counts.types[entry.id] || 0,
+    max: state.board.maxCounts.types[entry.id]
   })));
   renderGroup($("#sizes"), $("#size-group"), "sizes", state.data.sizePresets.map((size) => ({
     id: String(size),
     label: String(size),
-    count: counts.sizes[String(size)] || 0
+    count: counts.sizes[String(size)] || 0,
+    max: state.board.maxCounts.sizes[String(size)]
   })));
-  $("#info-empty").hidden = state.board.items.length > 0;
+  $("#info-empty").hidden = hasBoardInfo();
   renderDetail();
   renderEstimate(counts);
   renderExact();
+  renderTreasureTotal();
+}
+
+function onTreasureTotal() {
+  const input = $("#treasure-total");
+  const text = input.value.trim();
+  if (!text) {
+    state.board.treasureTotal = null;
+    persist();
+    $("#info-empty").hidden = hasBoardInfo();
+    return;
+  }
+  if (!/^\d+$/.test(text)) return;
+  state.board.treasureTotal = Number(text);
+  persist();
+  $("#info-empty").hidden = true;
+}
+
+function onTreasureTotalBlur() {
+  const input = $("#treasure-total");
+  const text = input.value.trim();
+  if (text && !/^\d+$/.test(text)) renderTreasureTotal();
+}
+
+function renderTreasureTotal() {
+  const input = $("#treasure-total");
+  if (!input || document.activeElement === input) return;
+  input.value = state.board.treasureTotal == null ? "" : String(state.board.treasureTotal);
 }
 
 function renderGroup(container, fieldset, kind, entries) {
   container.replaceChildren();
-  const visible = entries.filter((entry) => entry.count > 0);
+  const visible = entries.filter((entry) => entry.count > 0 || Number.isInteger(entry.max));
   fieldset.hidden = visible.length === 0;
   visible.forEach((entry) => {
     const button = document.createElement("button");
@@ -232,7 +804,7 @@ function renderGroup(container, fieldset, kind, entries) {
     name.textContent = entry.label;
     const count = document.createElement("span");
     count.className = "count";
-    count.textContent = String(entry.count);
+    count.textContent = Number.isInteger(entry.max) ? `${entry.count}/${entry.max}` : String(entry.count);
     button.append(name, count);
     container.appendChild(button);
   });
@@ -241,14 +813,20 @@ function renderGroup(container, fieldset, kind, entries) {
 function renderDetail() {
   const box = $("#detail");
   const items = matchingItems();
-  if (!state.selected || !items.length) {
+  const max = categoryMax(state.selected);
+  if (!state.selected || (!items.length && max == null)) {
     box.hidden = true;
+    $("#detail-list").replaceChildren();
+    $("#detail-empty").hidden = true;
     return;
   }
   box.hidden = false;
-  $("#detail-title").textContent = selectionLabel(state.selected);
+  const label = selectionLabel(state.selected);
+  $("#detail-title").textContent = max == null ? label : `${label} · ${items.length} of ${max}`;
+  $("#detail-empty").hidden = items.length > 0;
   const list = $("#detail-list");
   list.replaceChildren();
+  if (!items.length) return;
   items.forEach((item) => {
     const row = document.createElement("li");
     row.className = "detail-item";
@@ -259,18 +837,32 @@ function renderDetail() {
     price.className = "detail-price";
     price.textContent = item.price == null ? "Price hidden" : `Exact ${formatCoins(item.price)}`;
     text.append(title, price);
+    const actions = document.createElement("div");
+    actions.className = "detail-actions";
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "text-btn";
+    add.dataset.detail = item.id;
+    add.textContent = "Add detail";
+    add.setAttribute("aria-expanded", state.editing === item.id ? "true" : "false");
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "text-btn";
     remove.dataset.remove = item.id;
     remove.textContent = "Remove";
-    row.append(text, remove);
+    actions.append(add, remove);
+    row.append(text, actions);
+    if (state.editing === item.id) row.appendChild(buildDetailEditor(item));
     list.appendChild(row);
   });
 }
 
 function renderEstimate(counts) {
-  const worth = estimateWorth(counts, state.data);
+  const active = usesMaxConstraint(state.board);
+  const source = active ? tally(state.board.items.filter((item) => item.rarity), state.data) : counts;
+  const listed = estimateWorth(source, state.data);
+  const extra = active ? constrainedWorth(state.board, state.data) : { min: 0, max: 0 };
+  const worth = tidyRange(listed.min + extra.min, listed.max + extra.max);
   $("#worth-range").textContent = !worth || worth.max === 0
     ? "0"
     : worth.min === worth.max
@@ -342,10 +934,144 @@ function estimateWorth(board, data) {
   const minBases = assignValues(minMatrix, false);
   const maxBases = assignValues(maxMatrix, true);
 
-  return tidyRange(
-    applyScales(minBases, sizes, data, false),
-    applyScales(maxBases, sizes, data, true)
-  );
+  return {
+    min: applyScales(minBases, sizes, data, false),
+    max: applyScales(maxBases, sizes, data, true)
+  };
+}
+
+function usesMaxConstraint(board) {
+  if (!board || board.treasureTotal == null || !board.maxCounts) return false;
+  return Object.keys(board.maxCounts.rarities || {}).some((id) => Number.isInteger(board.maxCounts.rarities[id]));
+}
+
+function constrainedWorth(board, data) {
+  const units = constrainedUnits(board);
+  if (!units.length) return { min: 0, max: 0 };
+  return {
+    min: priceConstrained(units, board, data, false),
+    max: priceConstrained(units, board, data, true)
+  };
+}
+
+function constrainedUnits(board) {
+  const items = board.items || [];
+  const unlisted = Math.max(0, board.treasureTotal - items.length);
+  const units = items.filter((item) => !item.rarity).map((item) => ({
+    type: item.type || null,
+    size: item.size == null ? null : item.size
+  }));
+  const fillers = Math.min(unlisted, 60);
+  for (let index = 0; index < fillers; index += 1) units.push({ type: null, size: null });
+  return units;
+}
+
+function priceConstrained(units, board, data, pickMax) {
+  const rarityRoom = countRooms(board, data.rarities.map((entry) => entry.id), "rarities", (item) => item.rarity || "");
+  const typeRoom = countRooms(board, data.types.map((entry) => entry.id), "types", (item) => item.type || "");
+  const sizeRoom = countRooms(board, data.sizePresets.map(String), "sizes", (item) => item.size == null ? "" : String(item.size));
+  const limitTypes = Object.keys(board.maxCounts.types || {}).some((id) => Number.isInteger(board.maxCounts.types[id]));
+  const limitSizes = Object.keys(board.maxCounts.sizes || {}).some((id) => Number.isInteger(board.maxCounts.sizes[id]));
+  const ordered = [...units].sort((a, b) => specificity(a) - specificity(b));
+  return ordered.reduce((sum, unit) => {
+    const rarity = takeRarity(unit, rarityRoom, data, pickMax);
+    if (!rarity) return sum;
+    const group = unit.type
+      ? groupForType(unit.type, data)
+      : limitTypes
+        ? takeGroup(typeRoom, data, rarity, pickMax)
+        : null;
+    const scale = unit.size != null
+      ? scaleFor(unit.size, data)
+      : limitSizes
+        ? takeScale(sizeRoom, data, pickMax)
+        : scaleFor(null, data);
+    const bounds = boundsFor(rarity, group, data);
+    const base = pickMax ? bounds.max : bounds.min;
+    const factor = pickMax ? scale.maxScale : scale.minScale;
+    if (!Number.isFinite(base) || !Number.isFinite(factor)) return sum;
+    return sum + base * factor;
+  }, 0);
+}
+
+function specificity(unit) {
+  return (unit.type ? 1 : 0) + (unit.size != null ? 1 : 0);
+}
+
+function countRooms(board, ids, kind, read) {
+  const room = {};
+  const maxes = board.maxCounts?.[kind] || {};
+  ids.forEach((id) => {
+    const known = board.items.filter((item) => read(item) === id).length;
+    room[id] = Number.isInteger(maxes[id]) ? Math.max(0, maxes[id] - known) : Infinity;
+  });
+  return room;
+}
+
+function takeRarity(unit, room, data, pickMax) {
+  const chosen = bestRarity(unit, room, data, pickMax, true);
+  if (!chosen) return bestRarity(unit, room, data, pickMax, false);
+  if (room[chosen] !== Infinity) room[chosen] -= 1;
+  return chosen;
+}
+
+function bestRarity(unit, room, data, pickMax, respectRoom) {
+  let bestId = null;
+  let best = pickMax ? -Infinity : Infinity;
+  data.rarities.forEach((entry) => {
+    if (respectRoom && !(room[entry.id] > 0)) return;
+    const group = unit.type ? groupForType(unit.type, data) : null;
+    const value = pickMax ? boundsFor(entry.id, group, data).max : boundsFor(entry.id, group, data).min;
+    if (!Number.isFinite(value)) return;
+    if (pickMax ? value > best : value < best) {
+      best = value;
+      bestId = entry.id;
+    }
+  });
+  return bestId;
+}
+
+function groupForType(typeId, data) {
+  return data.types.find((entry) => entry.id === typeId)?.group || null;
+}
+
+function takeGroup(room, data, rarity, pickMax) {
+  let bestType = null;
+  let bestGroup = null;
+  let best = pickMax ? -Infinity : Infinity;
+  data.types.forEach((entry) => {
+    if (!(room[entry.id] > 0)) return;
+    const value = pickMax ? boundsFor(rarity, entry.group, data).max : boundsFor(rarity, entry.group, data).min;
+    if (!Number.isFinite(value)) return;
+    if (pickMax ? value > best : value < best) {
+      best = value;
+      bestType = entry.id;
+      bestGroup = entry.group;
+    }
+  });
+  if (!bestType) return null;
+  if (room[bestType] !== Infinity) room[bestType] -= 1;
+  return bestGroup;
+}
+
+function takeScale(room, data, pickMax) {
+  let bestSize = null;
+  let bestScale = null;
+  let best = pickMax ? -Infinity : Infinity;
+  data.sizePresets.forEach((size) => {
+    const id = String(size);
+    if (!(room[id] > 0)) return;
+    const scale = scaleFor(size, data);
+    const score = pickMax ? scale.maxScale : scale.minScale;
+    if (pickMax ? score > best : score < best) {
+      best = score;
+      bestSize = id;
+      bestScale = scale;
+    }
+  });
+  if (!bestScale) return scaleFor(null, data);
+  if (room[bestSize] !== Infinity) room[bestSize] -= 1;
+  return bestScale;
 }
 
 function boundsFor(rarity, group, data) {
@@ -474,7 +1200,7 @@ function bitCount(value) {
 
 function parseCoins(raw) {
   if (raw == null) return null;
-  const text = String(raw).trim().toLowerCase().replace(/,/g, "").replace(/\s+/g, "");
+  const text = String(raw).trim().toLowerCase().replace(/\s+/g, "");
   if (!text) return null;
   const match = text.match(/^(\d+(\.\d+)?)([km])?$/);
   if (!match) return Number.NaN;
@@ -502,20 +1228,36 @@ function zeroSizes(presets) {
 }
 
 function loadBoard() {
-  const blank = { house: state.data.houses[0].id, items: [] };
+  const blank = { house: state.data.houses[0].id, items: [], treasureTotal: null, maxCounts: emptyMaxCounts() };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     if (!saved || typeof saved !== "object") return blank;
     const items = Array.isArray(saved.items) ? saved.items.filter(validItem) : [];
+    const total = Number(saved.treasureTotal);
     return {
       house: typeof saved.house === "string" ? saved.house : blank.house,
-      items
+      items,
+      treasureTotal: Number.isInteger(total) && total >= 0 ? total : null,
+      maxCounts: normalizeMaxCounts(saved.maxCounts)
     };
   } catch (error) {
     return blank;
   }
 }
 
+function normalizeMaxCounts(raw) {
+  const result = emptyMaxCounts();
+  if (!raw || typeof raw !== "object") return result;
+  ["rarities", "types", "sizes"].forEach((kind) => {
+    const source = raw[kind];
+    if (!source || typeof source !== "object") return;
+    Object.keys(source).forEach((id) => {
+      const value = Number(source[id]);
+      if (Number.isInteger(value) && value >= 0) result[kind][id] = value;
+    });
+  });
+  return result;
+}
 function validItem(item) {
   return item && typeof item.id === "string";
 }
@@ -533,6 +1275,7 @@ function showError(message) {
   const error = $("#form-error");
   error.hidden = false;
   error.textContent = message;
+  error.scrollIntoView({ block: "nearest" });
 }
 
 function hideError() {
@@ -554,5 +1297,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=8").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=18").catch(() => {});
 }

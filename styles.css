@@ -104,7 +104,6 @@ h2 { margin: 0 0 14px; font-weight: 650; font-size: 1rem; }
 .status,
 .hint,
 .empty,
-.notes,
 .item-meta,
 .item-note {
   color: var(--muted);
@@ -129,8 +128,7 @@ h2 { margin: 0 0 14px; font-weight: 650; font-size: 1rem; }
 .worth-label,
 .hint,
 .form-error,
-.empty,
-.notes p { margin: 0; }
+.empty { margin: 0; }
 
 .worth-label {
   color: var(--muted);
@@ -221,12 +219,13 @@ legend {
 .counter { display: flex; align-items: center; gap: 4px; }
 
 #rarities .chip,
-#add-rarities .chip {
+.add-rarities .chip {
   flex: 1 1 calc(33.33% - 8px);
   max-width: calc(33.33% - 8px);
 }
 
-#sizes .chip { min-width: 44px; }
+#sizes .chip,
+.add-sizes .chip { min-width: 44px; }
 
 .count { font-variant-numeric: tabular-nums; }
 
@@ -260,12 +259,37 @@ legend {
 
 .detail-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
   border-radius: 12px;
   background: var(--bg);
+}
+
+.detail-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.detail-editor {
+  flex: 1 1 100%;
+}
+
+.detail-editor > .field:first-child { margin-top: 0; }
+
+.detail-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.detail-editor .primary {
+  flex: 1;
+  margin-top: 0;
 }
 
 .detail-item p { margin: 0; }
@@ -281,8 +305,8 @@ legend {
 .fab {
   position: fixed;
   z-index: 4;
-  left: max(16px, calc(50% - 240px + 16px));
-  bottom: calc(16px + var(--safe-bottom));
+  left: max(4px, calc(50% - 240px + 4px));
+  bottom: calc(32px + var(--safe-bottom));
   width: 56px;
   height: 56px;
   border: 0;
@@ -300,8 +324,9 @@ legend {
   left: max(16px, calc(50% - 240px + 16px));
   right: max(16px, calc(50% - 240px + 16px));
   bottom: calc(84px + var(--safe-bottom));
-  max-height: min(70vh, 560px);
+  max-height: min(78vh, 720px);
   overflow: auto;
+  overscroll-behavior: contain;
   margin: 0;
   padding: 16px;
   border: 1px solid var(--line);
@@ -310,7 +335,86 @@ legend {
   box-shadow: var(--shadow);
 }
 
-.sheet fieldset:last-of-type { margin-bottom: 0; }
+.sheet-top { margin-bottom: 14px; }
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mode-btn {
+  min-height: 48px;
+  padding: 8px 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.mode-btn[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--gold);
+  color: var(--gold-ink);
+  font-weight: 700;
+}
+
+.sheet-top .hint { margin-top: 8px; }
+
+.entry {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg);
+}
+
+.entry-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.entry-head .field {
+  flex: 0 1 9rem;
+  margin-top: 0;
+}
+
+.sheet .chip,
+.sheet .text-btn,
+.add-another { min-height: 44px; }
+
+.add-another {
+  width: 100%;
+  margin-top: 2px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  background: transparent;
+}
+
+.add-another:hover { background: var(--raise-2); }
+
+.entry.is-max .field:has(.group-price) { display: none; }
+
+.entry-head .count-use {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+
+select.group-use {
+  width: auto;
+  min-width: 8.75rem;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  color: inherit;
+  font-size: 16px;
+}
+
+.entry-head .text-btn { margin-left: auto; }
 
 .minus {
   width: 32px;
@@ -322,7 +426,7 @@ legend {
   line-height: 1;
 }
 
-.exact { margin-top: 4px; }
+.exact { margin: 0 0 14px; }
 
 .exact .field {
   margin-top: 0;
@@ -332,11 +436,14 @@ legend {
   text-transform: uppercase;
 }
 
-.exact input {
+.exact input,
+.total-count input {
   margin-top: 8px;
   font-variant-numeric: tabular-nums;
   font-size: 1.25rem;
 }
+
+.total-count { display: block; }
 
 .field {
   display: flex;
@@ -437,24 +544,9 @@ input {
 
 .empty { margin-top: 10px; }
 
-.notes {
-  margin: 18px 4px 0;
-  font-size: 0.92rem;
-}
-
-.notes summary { cursor: pointer; }
-
-.notes p { margin-top: 10px; }
-
-code {
-  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-  font-size: 0.88em;
-}
-
 button:focus-visible,
 input:focus-visible,
-select:focus-visible,
-summary:focus-visible {
+select:focus-visible {
   outline: 2px solid var(--gold);
   outline-offset: 2px;
 }

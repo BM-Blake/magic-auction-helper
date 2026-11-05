@@ -11,7 +11,7 @@
     <title>Magic Auction Helper</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=8">
+    <link rel="stylesheet" href="styles.css?v=18">
   </head>
   <body>
     <div class="app">
@@ -36,6 +36,16 @@
         <section class="card" aria-labelledby="info-heading">
           <h2 id="info-heading">Available information</h2>
 
+          <label class="exact total-count">
+            <span class="worth-label">Total treasures</span>
+            <input id="treasure-total" inputmode="numeric" autocomplete="off" enterkeyhint="done" placeholder="All treasures in this auction" aria-label="Total treasures in this auction">
+          </label>
+
+          <div class="exact">
+            <p class="worth-label">Exact price</p>
+            <p id="exact-total" class="exact-total">0</p>
+          </div>
+
           <p id="info-empty" class="empty">Nothing revealed yet.</p>
 
           <fieldset id="rarity-group" hidden>
@@ -55,55 +65,31 @@
 
           <div id="detail" class="detail" hidden>
             <h3 id="detail-title"></h3>
+            <p id="detail-empty" class="empty" hidden>None listed yet.</p>
             <ul id="detail-list" class="detail-list"></ul>
           </div>
-
-          <div class="exact">
-            <p class="worth-label">Exact price</p>
-            <p id="exact-total" class="exact-total">0</p>
-          </div>
         </section>
-
-        <details class="notes">
-          <summary>Prices and GitHub Pages</summary>
-          <p id="disclaimer"></p>
-          <p>
-            Push this folder to GitHub, then set Pages to deploy from this branch's root.
-            Paths are relative, so a project site at <code>/magic-auction-helper/</code> works. Open the page once while online.
-            After that, the service worker loads it with no connection. A reload while online picks up newer files.
-          </p>
-          <p>
-            Tune the bands in <code>data/auction.json</code>. Reload once while online so this device saves the new ranges.
-          </p>
-        </details>
       </main>
     </div>
 
-    <button type="button" id="fab" class="fab" aria-label="Add a revealed treasure">+</button>
+    <button type="button" id="fab" class="fab" aria-label="Add information">+</button>
     <form id="sheet" class="sheet" hidden>
-      <div class="form-head">
-        <h2>Add a revealed treasure</h2>
-        <button type="button" id="close-sheet" class="text-btn">Close</button>
+      <div class="sheet-top">
+        <div class="form-head">
+          <h2>Add information</h2>
+          <button type="button" id="close-sheet" class="text-btn">Close</button>
+        </div>
+        <div class="mode-switch" role="group" aria-label="How to apply this information">
+          <button type="button" class="mode-btn" data-mode="new" aria-pressed="true">New treasures</button>
+          <button type="button" class="mode-btn" data-mode="update" aria-pressed="false">Update listed</button>
+        </div>
+        <p id="mode-hint" class="hint">Each count adds that many treasures.</p>
       </div>
-      <fieldset>
-        <legend>Rarity</legend>
-        <div id="add-rarities" class="chips" role="group" aria-label="Rarity"></div>
-      </fieldset>
-      <fieldset>
-        <legend>Type</legend>
-        <div id="add-types" class="chips" role="group" aria-label="Type"></div>
-      </fieldset>
-      <fieldset>
-        <legend>Size</legend>
-        <div id="add-sizes" class="chips" role="group" aria-label="Size in tiles"></div>
-      </fieldset>
-      <label class="field">
-        <span>Exact price</span>
-        <input id="new-price" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="Optional, such as 120k or 1.2m">
-      </label>
-      <p id="form-error" class="form-error" hidden></p>
+      <div id="groups"></div>
+      <button type="button" id="add-group" class="add-another">Add another</button>
+      <p id="form-error" class="form-error" role="alert" hidden></p>
       <button type="submit" class="primary">Add</button>
     </form>
-    <script src="app.js?v=8"></script>
+    <script src="app.js?v=18"></script>
   </body>
 </html>
