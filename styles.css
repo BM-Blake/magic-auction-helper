@@ -319,6 +319,7 @@ legend {
   margin: 6px 0 0;
   font-size: 1.35rem;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .fab {

@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=32"),
-      fetch("data/treasures.json?v=32")
+      fetch("data/auction.json?v=33"),
+      fetch("data/treasures.json?v=33")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -403,6 +403,9 @@ function onAdd(event) {
   }
   if (totalSpecs.length === 1) state.board.treasureTotal = totalSpecs[0].count;
   applyMaxes(maxSpecs);
+  maxSpecs.forEach((spec) => {
+    if (spec.use === "max" && spec.rarity) revealUnknownForMax(spec.count);
+  });
 
   resetComposer();
   setSheet(false);
@@ -416,6 +419,14 @@ function applyMaxes(specs) {
       state.board.maxCounts[picked.kind][picked.id] = spec.count;
     });
   });
+}
+
+function revealUnknownForMax(count) {
+  const board = state.board;
+  const unrated = board.items.filter((item) => !item.rarity).length;
+  let make = Math.max(0, count - unrated);
+  if (board.treasureTotal != null) make = Math.min(make, Math.max(0, board.treasureTotal - board.items.length));
+  for (let index = 0; index < make; index += 1) board.items.push(blankItem({}));
 }
 
 function categoryPicks(spec) {
@@ -792,12 +803,7 @@ function unknownRemainder(board) {
   if (!board) return 0;
   const unrated = board.items.filter((item) => !item.rarity).length;
   if (board.treasureTotal == null) return unrated;
-  const known = state.data.rarities.reduce((sum, entry) => {
-    const max = board.maxCounts?.rarities?.[entry.id];
-    if (Number.isInteger(max)) return sum + max;
-    return sum + board.items.filter((item) => item.rarity === entry.id).length;
-  }, 0);
-  return Math.max(0, board.treasureTotal - known, unrated);
+  return unrated + Math.max(0, board.treasureTotal - board.items.length);
 }
 
 function resolveUnknown() {
@@ -848,8 +854,9 @@ function knownRarityCount(board, id) {
 function renderTreasureTotal() {
   const total = $("#treasure-total");
   if (!total) return;
-  const value = state.board && state.board.treasureTotal;
-  total.textContent = value == null ? "0" : String(value);
+  const recorded = state.board ? state.board.items.length : 0;
+  const cap = state.board ? state.board.treasureTotal : null;
+  total.textContent = Number.isInteger(cap) ? `${recorded} of ${cap}` : String(recorded);
 }
 
 function renderGroup(container, fieldset, kind, entries) {
@@ -1237,5 +1244,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=32").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=33").catch(() => {});
 }
