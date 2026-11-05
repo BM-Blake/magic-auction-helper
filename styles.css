@@ -448,14 +448,11 @@ select.group-use {
   text-transform: uppercase;
 }
 
-.exact input,
-.total-count input {
+.exact input {
   margin-top: 8px;
   font-variant-numeric: tabular-nums;
   font-size: 1.25rem;
 }
-
-.total-count { display: block; }
 
 .field {
   display: flex;

@@ -55,8 +55,6 @@ function bindStaticEvents() {
   $("#sizes").addEventListener("click", onSummaryClick);
   $("#detail-list").addEventListener("click", onDetailClick);
   $("#detail-list").addEventListener("submit", onDetailSubmit);
-  $("#treasure-total").addEventListener("input", onTreasureTotal);
-  $("#treasure-total").addEventListener("blur", onTreasureTotalBlur);
 }
 
 function emptyGroup() {
@@ -369,7 +367,7 @@ function onAdd(event) {
       use
     };
     const picks = categoryPicks(spec);
-    if (use === "max" && picks.length !== 1) {
+    if (use === "max" && picks.length > 1) {
       showError("Choose one rarity, type, or size for a max.");
       return;
     }
@@ -380,7 +378,12 @@ function onAdd(event) {
     parsed.push(spec);
   }
 
-  const maxSpecs = parsed.filter((spec) => spec.use === "max" || spec.use === "both");
+  const totalSpecs = parsed.filter((spec) => spec.use === "max" && categoryPicks(spec).length === 0);
+  if (totalSpecs.length > 1) {
+    showError("Enter one max for the total number of treasures.");
+    return;
+  }
+  const maxSpecs = parsed.filter((spec) => (spec.use === "max" || spec.use === "both") && categoryPicks(spec).length > 0);
   const itemSpecs = parsed.filter((spec) => spec.use !== "max");
   if (itemSpecs.length && state.mode === "update") {
     const touched = applyUpdates(itemSpecs);
@@ -395,6 +398,7 @@ function onAdd(event) {
       }
     });
   }
+  if (totalSpecs.length === 1) state.board.treasureTotal = totalSpecs[0].count;
   applyMaxes(maxSpecs);
 
   resetComposer();
@@ -755,31 +759,11 @@ function render() {
   renderTreasureTotal();
 }
 
-function onTreasureTotal() {
-  const input = $("#treasure-total");
-  const text = input.value.trim();
-  if (!text) {
-    state.board.treasureTotal = null;
-    persist();
-    $("#info-empty").hidden = hasBoardInfo();
-    return;
-  }
-  if (!/^\d+$/.test(text)) return;
-  state.board.treasureTotal = Number(text);
-  persist();
-  $("#info-empty").hidden = true;
-}
-
-function onTreasureTotalBlur() {
-  const input = $("#treasure-total");
-  const text = input.value.trim();
-  if (text && !/^\d+$/.test(text)) renderTreasureTotal();
-}
-
 function renderTreasureTotal() {
-  const input = $("#treasure-total");
-  if (!input || document.activeElement === input) return;
-  input.value = state.board.treasureTotal == null ? "" : String(state.board.treasureTotal);
+  const total = $("#treasure-total");
+  if (!total) return;
+  const value = state.board && state.board.treasureTotal;
+  total.textContent = value == null ? "0" : String(value);
 }
 
 function renderGroup(container, fieldset, kind, entries) {
@@ -1296,5 +1280,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=20").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=21").catch(() => {});
 }
