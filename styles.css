@@ -224,6 +224,18 @@ legend {
   max-width: calc(33.33% - 8px);
 }
 
+.add-rarities .chip,
+.add-rarities .chip:hover {
+  background: var(--chip);
+  color: var(--chip-ink);
+  border-color: transparent;
+}
+
+.add-rarities .chip[aria-pressed="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
 #sizes .chip,
 .add-sizes .chip { min-width: 44px; }
 

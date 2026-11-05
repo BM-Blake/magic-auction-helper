@@ -180,7 +180,7 @@ function priceField(group, index) {
 
 function pricePlaceholder(count) {
   const total = parseCount(count);
-  if (total != null && total > 1) return "Optional, one each: 120k, 80k";
+  if (total != null && total > 1) return "One per treasure: 120k, 80k";
   return "Optional, such as 120k or 1.2m";
 }
 
@@ -353,10 +353,10 @@ function onAdd(event) {
       showError(prices.error);
       return;
     }
-    if (prices.prices.length > 1 && prices.prices.length !== count) {
+    if (prices.prices.length > count) {
       const expected = count === 1
         ? "A comma separates prices. For one price, write 1200000 or 1.2m."
-        : `Enter ${count} prices separated by commas, or one price for all of them.`;
+        : `Enter at most ${count} prices, one for each treasure.`;
       showError(expected);
       return;
     }
@@ -441,7 +441,7 @@ function applyUpdates(specs) {
   let touched = 0;
   specs.forEach((spec) => {
     const match = factFrom(spec, 0);
-    if (spec.prices && spec.prices.length > 1) delete match.price;
+    if (spec.prices && spec.prices.length) delete match.price;
     if (!Object.keys(match).length && !(spec.prices && spec.prices.length)) {
       for (let index = 0; index < spec.count; index += 1) {
         state.board.items.push(blankItem({}));
@@ -478,9 +478,8 @@ function factFrom(spec, index) {
 }
 
 function priceAt(spec, index) {
-  if (!spec.prices || !spec.prices.length) return null;
-  if (spec.prices.length === 1) return spec.prices[0];
-  return spec.prices[index] ?? null;
+  if (!spec.prices || index >= spec.prices.length) return null;
+  return spec.prices[index];
 }
 
 function parsePriceList(raw) {
@@ -1297,5 +1296,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=18").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=20").catch(() => {});
 }
