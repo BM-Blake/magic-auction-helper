@@ -743,6 +743,7 @@ function render() {
     color: entry.color,
     ink: entry.ink
   })));
+  renderUnknown();
   renderGroup($("#types"), $("#type-group"), "types", state.data.types.map((entry) => ({
     id: entry.id,
     label: entry.name,
@@ -760,6 +761,36 @@ function render() {
   renderEstimate();
   renderExact();
   renderTreasureTotal();
+}
+
+function renderUnknown() {
+  const count = unknownRemainder(state.board);
+  if (count <= 0) return;
+  const fieldset = $("#rarity-group");
+  fieldset.hidden = false;
+  const chip = document.createElement("span");
+  chip.className = "chip is-on";
+  chip.style.setProperty("--chip", "#3a4154");
+  chip.style.setProperty("--chip-ink", "#f6f1e7");
+  const name = document.createElement("span");
+  name.textContent = "Unknown";
+  const number = document.createElement("span");
+  number.className = "count";
+  number.textContent = String(count);
+  chip.append(name, number);
+  $("#rarities").appendChild(chip);
+}
+
+function unknownRemainder(board) {
+  if (!board) return 0;
+  const described = board.items.filter((item) => !item.rarity && item.type && item.size != null).length;
+  if (board.treasureTotal == null) return described;
+  const known = state.data.rarities.reduce((sum, entry) => {
+    const max = board.maxCounts?.rarities?.[entry.id];
+    if (Number.isInteger(max)) return sum + max;
+    return sum + board.items.filter((item) => item.rarity === entry.id).length;
+  }, 0);
+  return Math.max(0, board.treasureTotal - known, described);
 }
 
 function resolveUnknown() {
@@ -1156,5 +1187,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=26").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=28").catch(() => {});
 }
