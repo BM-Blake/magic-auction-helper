@@ -4,14 +4,14 @@
     "mode": "Magic Auction",
     "season": "7.1",
     "currency": "Magic Auction Coins",
-    "estimateDisclaimer": "Estimate worth adds real treasure prices from data/treasures.json. Each treasure is used once. Common treasures are stored in that list as white and shown here as gray. Exact price is the total of prices the game has actually shown.",
+    "estimateDisclaimer": "Estimate worth adds real treasure prices from data/treasures.json, keeping only prices that fit the selected auction house. Each treasure is used once. Common treasures are stored in that list as white and shown here as gray. Exact price is the total of prices the game has actually shown.",
     "howToEdit": "Treasure prices live in data/treasures.json. The estimates rows are no longer used."
   },
   "houses": [
-    { "id": "eruditio", "name": "Eruditio" },
-    { "id": "dawnlight", "name": "Dawnlight" },
-    { "id": "world", "name": "World" },
-    { "id": "cosmic", "name": "Cosmic" }
+    { "id": "eruditio", "name": "Eruditio", "minPrice": 100, "maxPrice": 14999 },
+    { "id": "dawnlight", "name": "Dawnlight", "minPrice": 15000, "maxPrice": 1000000 },
+    { "id": "world", "name": "World", "minPrice": 15000, "maxPrice": 2500000 },
+    { "id": "cosmic", "name": "Cosmic", "minPrice": 50000, "maxPrice": 5000000 }
   ],
   "rarities": [
     { "id": "gray", "name": "Gray", "color": "#c5ccd6", "ink": "#1b1e26" },
@@ -40,7 +40,7 @@
     { "id": "consumable", "label": "Materials, minerals, potions, and food" },
     { "id": "info", "label": "Auction items used for clues" }
   ],
-  "sizePresets": [1, 2, 4, 6, 8, 9, 12, 16],
+  "sizePresets": [1, 2, 3, 4, 6, 8, 9, 12, 16],
   "sizeBands": [
     {
       "id": "small",

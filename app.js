@@ -156,7 +156,7 @@ function buildGroupElement(group, index) {
   })), "Type"));
   entry.appendChild(choiceField("Size", "size", "add-sizes", group, state.data.sizePresets.map((size) => ({
     id: String(size),
-    label: String(size)
+    label: sizeLabel(size)
   })), "Size in tiles"));
   return entry;
 }
@@ -220,6 +220,7 @@ function onHouseChange() {
   if (!state.board) return;
   state.board.house = $("#house").value;
   persist();
+  render();
 }
 
 function setSheet(open) {
@@ -669,7 +670,7 @@ function buildDetailEditor(item) {
   })), "Type"));
   form.appendChild(editChoices("Size", "size", "add-sizes", item.size == null ? "" : String(item.size), state.data.sizePresets.map((size) => ({
     id: String(size),
-    label: String(size)
+    label: sizeLabel(size)
   })), "Size in tiles"));
 
   const error = document.createElement("p");
@@ -752,7 +753,7 @@ function render() {
   })));
   renderGroup($("#sizes"), $("#size-group"), "sizes", state.data.sizePresets.map((size) => ({
     id: String(size),
-    label: String(size),
+    label: sizeLabel(size),
     count: counts.sizes[String(size)] || 0,
     max: state.board.maxCounts.sizes[String(size)]
   })));
@@ -783,14 +784,14 @@ function renderUnknown() {
 
 function unknownRemainder(board) {
   if (!board) return 0;
-  const described = board.items.filter((item) => !item.rarity && item.type && item.size != null).length;
-  if (board.treasureTotal == null) return described;
+  const unrated = board.items.filter((item) => !item.rarity).length;
+  if (board.treasureTotal == null) return unrated;
   const known = state.data.rarities.reduce((sum, entry) => {
     const max = board.maxCounts?.rarities?.[entry.id];
     if (Number.isInteger(max)) return sum + max;
     return sum + board.items.filter((item) => item.rarity === entry.id).length;
   }, 0);
-  return Math.max(0, board.treasureTotal - known, described);
+  return Math.max(0, board.treasureTotal - known, unrated);
 }
 
 function resolveUnknown() {
@@ -866,7 +867,7 @@ function renderGroup(container, fieldset, kind, entries) {
     name.textContent = entry.label;
     const count = document.createElement("span");
     count.className = "count";
-    count.textContent = Number.isInteger(entry.max) ? `${entry.count}/${entry.max}` : String(entry.count);
+    count.textContent = quantityLabel(entry.count, entry.max, kind);
     button.append(name, count);
     container.appendChild(button);
   });
@@ -957,6 +958,17 @@ function itemSummary(item) {
   return parts.join(" · ") || "Revealed treasure";
 }
 
+function sizeLabel(size) {
+  const tiles = Number(size);
+  return tiles === 1 ? "1 tile" : `${tiles} tiles`;
+}
+
+function quantityLabel(count, max, kind) {
+  if (Number.isInteger(max)) return `${count} of ${max}`;
+  if (kind === "sizes") return `×${count}`;
+  return String(count);
+}
+
 function rarityName(id) {
   return state.data.rarities.find((entry) => entry.id === id)?.name || id;
 }
@@ -982,26 +994,41 @@ function usesMaxConstraint(board) {
   return Object.keys(board.maxCounts.rarities || {}).some((id) => Number.isInteger(board.maxCounts.rarities[id]));
 }
 
+function houseRange(data, houseId) {
+  const house = (data.houses || []).find((entry) => entry.id === houseId);
+  return {
+    min: Number.isFinite(house?.minPrice) ? house.minPrice : 0,
+    max: Number.isFinite(house?.maxPrice) ? house.maxPrice : Infinity
+  };
+}
+
 function catalogWorth(board, data, pickMax) {
   const treasures = data.treasures || [];
   const slots = estimateSlots(board);
   if (!slots.length || !treasures.length) return 0;
   const rooms = openRooms(board, data);
-  const items = treasures.map((item, index) => ({ ...item, index }));
-  items.sort((left, right) => {
+  const range = houseRange(data, board.house);
+  const byPrice = (left, right) => {
     const diff = pickMax ? right.price - left.price : left.price - right.price;
     return diff || left.index - right.index;
-  });
+  };
+  const items = treasures.map((item, index) => ({ ...item, index })).sort(byPrice);
+  const houseItems = items
+    .filter((item) => item.price >= range.min && item.price <= range.max)
+    .sort(byPrice);
+  const pool = houseItems.length ? houseItems : items;
   const ordered = slots
     .map((slot, index) => ({
       slot,
       index,
-      choices: treasures.filter((item) => matchesFacts(item, slot)).length
+      choices: pool.filter((item) => matchesFacts(item, slot)).length
     }))
     .sort((left, right) => left.choices - right.choices || left.index - right.index);
   const used = new Set();
   return ordered.reduce((sum, entry) => {
-    const taken = takeItem(items, used, entry.slot, rooms);
+    const inHouse = pool === items || pool.some((item) => slotFitsHouse(item, entry.slot));
+    const taken = takeItem(pool, used, entry.slot, rooms) ||
+      (inHouse ? null : takeItem(items, used, entry.slot, rooms));
     if (!taken) return sum;
     used.add(taken.item.index);
     spend(taken.item, taken.slot, rooms);
@@ -1014,7 +1041,6 @@ function estimateSlots(board) {
   const slots = [];
   (board.items || []).forEach((item) => {
     const rarity = item.rarity && item.rarity !== "unknown" ? item.rarity : null;
-    if (!rarity && !item.type && item.size == null && !active) return;
     slots.push({
       rarity,
       type: item.type || null,
@@ -1047,6 +1073,11 @@ function roomFor(board, ids, kind, read) {
     room[id] = Number.isInteger(maxes[id]) ? Math.max(0, maxes[id] - known) : Infinity;
   });
   return room;
+}
+
+function slotFitsHouse(item, slot) {
+  if (matchesFacts(item, slot)) return true;
+  return slot.size != null && matchesFacts(item, { ...slot, size: null });
 }
 
 function takeItem(items, used, slot, rooms) {
@@ -1187,5 +1218,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=28").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=30").catch(() => {});
 }

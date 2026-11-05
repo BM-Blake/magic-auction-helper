@@ -239,7 +239,14 @@ legend {
 #sizes .chip,
 .add-sizes .chip { min-width: 44px; }
 
-.count { font-variant-numeric: tabular-nums; }
+.count {
+  min-width: 1.5em;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
 
 .chip.is-on,
 .chip[aria-pressed="true"] {
