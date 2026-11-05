@@ -11,7 +11,7 @@
     <title>Magic Auction Helper</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=33">
+    <link rel="stylesheet" href="styles.css?v=37">
   </head>
   <body>
     <div class="app">
@@ -79,17 +79,13 @@
           <h2>Add information</h2>
           <button type="button" id="close-sheet" class="text-btn">Close</button>
         </div>
-        <div class="mode-switch" role="group" aria-label="How to apply this information">
-          <button type="button" class="mode-btn" data-mode="new" aria-pressed="true">New treasures</button>
-          <button type="button" class="mode-btn" data-mode="update" aria-pressed="false">Update listed</button>
-        </div>
-        <p id="mode-hint" class="hint">Each count adds that many treasures.</p>
+        <p class="hint">Each count adds that many treasures.</p>
       </div>
       <div id="groups"></div>
       <button type="button" id="add-group" class="add-another">Add another</button>
       <p id="form-error" class="form-error" role="alert" hidden></p>
       <button type="submit" class="primary">Add</button>
     </form>
-    <script src="app.js?v=33"></script>
+    <script src="app.js?v=37"></script>
   </body>
 </html>

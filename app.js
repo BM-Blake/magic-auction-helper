@@ -5,8 +5,7 @@ const state = {
   data: null,
   board: null,
   selected: null,
-  editing: null,
-  mode: "new",
+  detailOpen: null,
   groups: [emptyGroup()]
 };
 
@@ -22,8 +21,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=33"),
-      fetch("data/treasures.json?v=33")
+      fetch("data/auction.json?v=37"),
+      fetch("data/treasures.json?v=37")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -56,11 +55,10 @@ function bindStaticEvents() {
   $("#types").addEventListener("click", onSummaryClick);
   $("#sizes").addEventListener("click", onSummaryClick);
   $("#detail-list").addEventListener("click", onDetailClick);
-  $("#detail-list").addEventListener("submit", onDetailSubmit);
 }
 
 function emptyGroup() {
-  return { rarity: "", type: "", size: "", count: "1", price: "", use: "known" };
+  return { rarity: "", type: "", size: "", count: "1", price: "", use: "known", open: "" };
 }
 
 function buildHouseOptions() {
@@ -84,7 +82,6 @@ function renderGroups() {
   state.groups.forEach((group, index) => {
     root.appendChild(buildGroupElement(group, index));
   });
-  syncMode();
 }
 
 function buildGroupElement(group, index) {
@@ -143,6 +140,7 @@ function buildGroupElement(group, index) {
   }
   entry.appendChild(head);
   entry.appendChild(priceField(group, index));
+  entry.appendChild(categoryRow(group));
 
   entry.appendChild(choiceField("Rarity", "rarity", "add-rarities", group, state.data.rarities.map((rarity) => ({
     id: rarity.id,
@@ -159,6 +157,65 @@ function buildGroupElement(group, index) {
     label: sizeLabel(size)
   })), "Size in tiles"));
   return entry;
+}
+
+function categoryRow(group) {
+  const row = document.createElement("div");
+  row.className = "cat-row";
+  row.setAttribute("role", "group");
+  row.setAttribute("aria-label", "Category");
+  [
+    ["rarity", "Rarity"],
+    ["type", "Type"],
+    ["size", "Size"]
+  ].forEach(([kind, label]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "cat-btn";
+    button.dataset.openCat = kind;
+    const name = document.createElement("span");
+    name.className = "cat-name";
+    name.textContent = label;
+    const value = document.createElement("span");
+    value.className = "cat-value";
+    button.append(name, value);
+    paintCategoryButton(button, group);
+    row.appendChild(button);
+  });
+  return row;
+}
+
+function paintCategoryButton(button, group) {
+  const kind = button.dataset.openCat;
+  const picked = categoryValue(group, kind);
+  const value = button.querySelector(".cat-value");
+  value.textContent = picked.label;
+  button.classList.toggle("is-rarity", Boolean(picked.color));
+  if (picked.color) {
+    button.style.setProperty("--chip", picked.color);
+    button.style.setProperty("--chip-ink", picked.ink);
+  } else {
+    button.style.removeProperty("--chip");
+    button.style.removeProperty("--chip-ink");
+  }
+  const open = group.open === kind;
+  button.setAttribute("aria-pressed", open ? "true" : "false");
+  button.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function categoryValue(group, kind) {
+  if (kind === "rarity" && group.rarity) {
+    const rarity = state.data.rarities.find((entry) => entry.id === group.rarity);
+    if (rarity) return { label: rarity.name, color: rarity.color, ink: rarity.ink };
+  }
+  if (kind === "type" && group.type) {
+    const type = state.data.types.find((entry) => entry.id === group.type);
+    if (type) return { label: type.name, color: "", ink: "" };
+  }
+  if (kind === "size" && group.size) {
+    return { label: sizeLabel(Number(group.size)), color: "", ink: "" };
+  }
+  return { label: "", color: "", ink: "" };
 }
 
 function priceField(group, index) {
@@ -186,6 +243,9 @@ function pricePlaceholder(count) {
 
 function choiceField(legendText, kind, extraClass, group, options, ariaLabel) {
   const fieldset = document.createElement("fieldset");
+  fieldset.className = "cat-panel";
+  fieldset.dataset.catPanel = kind;
+  fieldset.hidden = group.open !== kind;
   const legend = document.createElement("legend");
   legend.textContent = legendText;
   const chips = document.createElement("div");
@@ -233,14 +293,6 @@ function setSheet(open) {
 }
 
 function onSheetClick(event) {
-  const modeButton = event.target.closest("[data-mode]");
-  if (modeButton) {
-    state.mode = modeButton.dataset.mode;
-    syncMode();
-    hideError();
-    return;
-  }
-
   const remove = event.target.closest("[data-remove-group]");
   if (remove) {
     removeGroup(Number(remove.dataset.removeGroup));
@@ -255,6 +307,19 @@ function onSheetClick(event) {
     const counts = $("#sheet").querySelectorAll(".group-count");
     const last = counts[counts.length - 1];
     if (last) last.focus();
+    return;
+  }
+
+  const category = event.target.closest("[data-open-cat]");
+  if (category) {
+    const entry = category.closest("[data-group]");
+    if (!entry) return;
+    const group = state.groups[Number(entry.dataset.group)];
+    if (!group) return;
+    const kind = category.dataset.openCat;
+    group.open = group.open === kind ? "" : kind;
+    syncCategoryPanels(entry, group);
+    hideError();
     return;
   }
 
@@ -292,20 +357,16 @@ function syncGroupChips(entry, group) {
   entry.querySelectorAll("[data-pick]").forEach((button) => {
     button.setAttribute("aria-pressed", group[button.dataset.pick] === button.dataset.id ? "true" : "false");
   });
+  syncCategoryPanels(entry, group);
 }
 
-function syncMode() {
-  document.querySelectorAll("[data-mode]").forEach((button) => {
-    button.setAttribute("aria-pressed", button.dataset.mode === state.mode ? "true" : "false");
+function syncCategoryPanels(entry, group) {
+  entry.querySelectorAll("[data-open-cat]").forEach((button) => {
+    paintCategoryButton(button, group);
   });
-  const hint = $("#mode-hint");
-  const hints = {
-    new: "Each count adds that many treasures.",
-    update: "Fills listed treasures first, then adds any remainder."
-  };
-  if (hint) hint.textContent = hints[state.mode] || hints.new;
-  const submit = $("#sheet button[type='submit']");
-  if (submit) submit.textContent = state.mode === "update" ? "Update" : "Add";
+  entry.querySelectorAll("[data-cat-panel]").forEach((panel) => {
+    panel.hidden = group.open !== panel.dataset.catPanel;
+  });
 }
 
 function captureInputs() {
@@ -330,7 +391,6 @@ function removeGroup(index) {
 }
 
 function resetComposer() {
-  state.mode = "new";
   state.groups = [emptyGroup()];
   renderGroups();
   hideError();
@@ -388,19 +448,11 @@ function onAdd(event) {
   }
   const maxSpecs = parsed.filter((spec) => (spec.use === "max" || spec.use === "both") && categoryPicks(spec).length > 0);
   const itemSpecs = parsed.filter((spec) => spec.use !== "max");
-  if (itemSpecs.length && state.mode === "update") {
-    const touched = applyUpdates(itemSpecs);
-    if (touched === 0) {
-      showError("Nothing could be updated or created.");
-      return;
+  itemSpecs.forEach((spec) => {
+    for (let index = 0; index < spec.count; index += 1) {
+      state.board.items.push(blankItem(factFrom(spec, index)));
     }
-  } else {
-    itemSpecs.forEach((spec) => {
-      for (let index = 0; index < spec.count; index += 1) {
-        state.board.items.push(blankItem(factFrom(spec, index)));
-      }
-    });
-  }
+  });
   if (totalSpecs.length === 1) state.board.treasureTotal = totalSpecs[0].count;
   applyMaxes(maxSpecs);
   maxSpecs.forEach((spec) => {
@@ -455,36 +507,6 @@ function hasBoardInfo() {
   return ["rarities", "types", "sizes"].some((kind) => Object.keys(maxes[kind] || {}).length > 0);
 }
 
-function applyUpdates(specs) {
-  let touched = 0;
-  specs.forEach((spec) => {
-    const match = factFrom(spec, 0);
-    if (spec.prices && spec.prices.length) delete match.price;
-    if (!Object.keys(match).length && !(spec.prices && spec.prices.length)) {
-      for (let index = 0; index < spec.count; index += 1) {
-        state.board.items.push(blankItem({}));
-        touched += 1;
-      }
-      return;
-    }
-
-    const ranked = state.board.items
-      .map((item, index) => ({ item, index, score: updateScore(item, match) }))
-      .filter((entry) => entry.score != null)
-      .sort((a, b) => b.score - a.score || a.index - b.index);
-    const take = Math.min(spec.count, ranked.length);
-    for (let index = 0; index < take; index += 1) {
-      writeFact(ranked[index].item, factFrom(spec, index));
-      touched += 1;
-    }
-    for (let index = take; index < spec.count; index += 1) {
-      state.board.items.push(blankItem(factFrom(spec, index)));
-      touched += 1;
-    }
-  });
-  return touched;
-}
-
 function factFrom(spec, index) {
   const fact = {};
   if (spec.rarity) fact.rarity = spec.rarity;
@@ -521,38 +543,6 @@ function splitPriceParts(raw) {
     .filter(Boolean);
 }
 
-function updateScore(item, fact) {
-  let score = 0;
-  let missing = 0;
-  const keys = Object.keys(fact);
-  for (let index = 0; index < keys.length; index += 1) {
-    const key = keys[index];
-    if (fieldEmpty(item, key)) {
-      missing += 1;
-      continue;
-    }
-    if (!sameFact(item[key], fact[key])) return null;
-    score += 1;
-  }
-  return missing > 0 ? score : null;
-}
-
-function sameFact(current, wanted) {
-  if (typeof wanted === "number") return Number(current) === wanted;
-  return current === wanted;
-}
-
-function writeFact(item, fact) {
-  Object.keys(fact).forEach((key) => {
-    if (fieldEmpty(item, key)) item[key] = fact[key];
-  });
-}
-
-function fieldEmpty(item, key) {
-  const value = item[key];
-  return value == null || value === "";
-}
-
 function blankItem(fact) {
   return {
     id: createId(),
@@ -577,157 +567,103 @@ function onSummaryClick(event) {
   const next = { kind: button.dataset.open, id: button.dataset.id };
   const same = state.selected && state.selected.kind === next.kind && state.selected.id === next.id;
   state.selected = same ? null : next;
-  state.editing = null;
+  state.detailOpen = null;
   render();
 }
 
 function onDetailClick(event) {
-  const pick = event.target.closest("[data-edit]");
-  if (pick) {
-    const wasOn = pick.getAttribute("aria-pressed") === "true";
-    pick.closest(".chips").querySelectorAll("[data-edit]").forEach((button) => {
-      button.setAttribute("aria-pressed", "false");
-    });
-    if (!wasOn) pick.setAttribute("aria-pressed", "true");
-    const error = pick.closest(".detail-editor")?.querySelector(".form-error");
-    if (error) error.hidden = true;
+  const adjust = event.target.closest("[data-adjust]");
+  if (adjust) {
+    adjustDetail(adjust);
     return;
   }
+  const opener = event.target.closest("[data-open-row]");
+  if (!opener) return;
+  state.detailOpen = state.detailOpen === opener.dataset.openRow ? null : opener.dataset.openRow;
+  render();
+}
 
-  const cancel = event.target.closest("[data-cancel-detail]");
-  if (cancel) {
-    state.editing = null;
-    render();
-    return;
+function adjustDetail(button) {
+  if (!state.board || !state.selected) return;
+  const delta = Number(button.dataset.adjust);
+  const changed = button.dataset.childField
+    ? adjustNested(button, delta)
+    : adjustTop(button, delta);
+  if (!changed) return;
+  if (!selectionStillOpen()) {
+    state.selected = null;
+    state.detailOpen = null;
   }
-
-  const opener = event.target.closest("[data-detail]");
-  if (opener) {
-    state.editing = state.editing === opener.dataset.detail ? null : opener.dataset.detail;
-    render();
-    const price = document.querySelector(".detail-editor .detail-price-input");
-    if (price) price.focus();
-    return;
-  }
-
-  const button = event.target.closest("[data-remove]");
-  if (!button) return;
-  state.board.items = state.board.items.filter((item) => item.id !== button.dataset.remove);
-  if (state.editing === button.dataset.remove) state.editing = null;
-  if (!selectionStillOpen()) state.selected = null;
   persist();
   render();
 }
 
-function onDetailSubmit(event) {
-  event.preventDefault();
-  const form = event.target.closest("[data-editor]");
-  if (!form || !state.board) return;
-  const item = state.board.items.find((entry) => entry.id === form.dataset.editor);
-  if (!item) return;
-
-  const chosen = (kind) => {
-    const button = form.querySelector(`[data-edit="${kind}"][aria-pressed="true"]`);
-    return button ? button.dataset.id : "";
-  };
-  const raw = form.querySelector(".detail-price-input")?.value || "";
-  const price = parseCoins(raw);
-  if (String(raw).trim() && Number.isNaN(price)) {
-    const error = form.querySelector(".form-error");
-    error.hidden = false;
-    error.textContent = "Enter a price like 120000, 120k, or 1.2m. Do not put commas inside one price.";
-    return;
+function adjustTop(button, delta) {
+  const parent = parentFacts(state.selected);
+  const field = button.dataset.field;
+  const id = button.dataset.id;
+  if (id === "unknown") {
+    const unknown = Object.assign({}, parent);
+    writeDetailFact(unknown, field, "unknown");
+    return adjustGroup(unknown, delta);
   }
-
-  item.rarity = chosen("rarity");
-  item.type = chosen("type");
-  item.size = chosen("size") ? Number(chosen("size")) : null;
-  item.price = String(raw).trim() ? price : null;
-  state.editing = null;
-  if (!selectionStillOpen()) state.selected = null;
-  persist();
-  render();
+  if (delta > 0) return increaseChild(parent, field, id);
+  return decreaseChild(parent, field, id);
 }
 
-function buildDetailEditor(item) {
-  const form = document.createElement("form");
-  form.className = "detail-editor";
-  form.dataset.editor = item.id;
-
-  const priceLabel = document.createElement("label");
-  priceLabel.className = "field";
-  const priceName = document.createElement("span");
-  priceName.textContent = "Exact price";
-  const priceInput = document.createElement("input");
-  priceInput.className = "detail-price-input";
-  priceInput.inputMode = "decimal";
-  priceInput.autocomplete = "off";
-  priceInput.enterKeyHint = "done";
-  priceInput.placeholder = "Optional, such as 120k or 1.2m";
-  priceInput.value = item.price == null ? "" : String(item.price);
-  priceInput.setAttribute("aria-label", "Exact price");
-  priceLabel.append(priceName, priceInput);
-  form.appendChild(priceLabel);
-
-  form.appendChild(editChoices("Rarity", "rarity", "add-rarities", item.rarity || "", state.data.rarities.map((rarity) => ({
-    id: rarity.id,
-    label: rarity.name,
-    color: rarity.color,
-    ink: rarity.ink
-  })), "Rarity"));
-  form.appendChild(editChoices("Type", "type", "", item.type || "", state.data.types.map((type) => ({
-    id: type.id,
-    label: type.name
-  })), "Type"));
-  form.appendChild(editChoices("Size", "size", "add-sizes", item.size == null ? "" : String(item.size), state.data.sizePresets.map((size) => ({
-    id: String(size),
-    label: sizeLabel(size)
-  })), "Size in tiles"));
-
-  const error = document.createElement("p");
-  error.className = "form-error";
-  error.hidden = true;
-
-  const actions = document.createElement("div");
-  actions.className = "detail-editor-actions";
-  const cancel = document.createElement("button");
-  cancel.type = "button";
-  cancel.className = "text-btn";
-  cancel.dataset.cancelDetail = item.id;
-  cancel.textContent = "Cancel";
-  const save = document.createElement("button");
-  save.type = "submit";
-  save.className = "primary";
-  save.textContent = "Save";
-  actions.append(cancel, save);
-  form.append(error, actions);
-  return form;
+function adjustNested(button, delta) {
+  const facts = parentFacts(state.selected);
+  writeDetailFact(facts, button.dataset.field, button.dataset.id);
+  return adjustChild(facts, button.dataset.childField, button.dataset.childId, delta);
 }
 
-function editChoices(legendText, kind, extraClass, current, options, ariaLabel) {
-  const fieldset = document.createElement("fieldset");
-  const legend = document.createElement("legend");
-  legend.textContent = legendText;
-  const chips = document.createElement("div");
-  chips.className = extraClass ? `chips ${extraClass}` : "chips";
-  chips.setAttribute("role", "group");
-  chips.setAttribute("aria-label", ariaLabel);
-  options.forEach((option) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chip";
-    button.dataset.edit = kind;
-    button.dataset.id = option.id;
-    button.textContent = option.label;
-    button.setAttribute("aria-pressed", current === option.id ? "true" : "false");
-    if (option.color) {
-      button.style.setProperty("--chip", option.color);
-      button.style.setProperty("--chip-ink", option.ink);
-    }
-    chips.appendChild(button);
-  });
-  fieldset.append(legend, chips);
-  return fieldset;
+function adjustGroup(facts, delta) {
+  if (delta > 0) {
+    state.board.items.push(blankItem(facts));
+    return true;
+  }
+  return removeOneItem(facts);
+}
+
+function adjustChild(facts, field, id, delta) {
+  if (id === "unknown") {
+    const unknown = Object.assign({}, facts);
+    writeDetailFact(unknown, field, "unknown");
+    return adjustGroup(unknown, delta);
+  }
+  if (delta > 0) return increaseChild(facts, field, id);
+  return decreaseChild(facts, field, id);
+}
+
+function increaseChild(facts, field, id) {
+  const open = state.board.items
+    .filter((item) => itemMatches(item, facts) && childUnset(item, field))
+    .sort((left, right) => detailSpecificity(left) - detailSpecificity(right));
+  if (open.length) {
+    writeDetailFact(open[0], field, id);
+    return true;
+  }
+  const created = Object.assign({}, facts);
+  writeDetailFact(created, field, id);
+  state.board.items.push(blankItem(created));
+  return true;
+}
+
+function decreaseChild(facts, field, id) {
+  const specific = Object.assign({}, facts);
+  writeDetailFact(specific, field, id);
+  const match = state.board.items
+    .filter((item) => itemMatches(item, specific))
+    .sort((left, right) => detailSpecificity(left) - detailSpecificity(right))[0];
+  if (!match) return false;
+  writeDetailFact(match, field, "unknown");
+  return true;
+}
+
+function childUnset(item, field) {
+  if (field === "rarities") return !item.rarity;
+  if (field === "types") return !item.type;
+  return item.size == null;
 }
 
 function endGame() {
@@ -737,7 +673,7 @@ function endGame() {
   state.board.treasureTotal = null;
   state.board.maxCounts = emptyMaxCounts();
   state.selected = null;
-  state.editing = null;
+  state.detailOpen = null;
   resetComposer();
   setSheet(false);
   persist();
@@ -886,6 +822,69 @@ function renderGroup(container, fieldset, kind, entries) {
   });
 }
 
+function detailLevels(kind) {
+  if (kind === "rarities") return ["types", "sizes"];
+  if (kind === "types") return ["rarities", "sizes"];
+  return ["rarities", "types"];
+}
+
+function parentFacts(selected) {
+  if (!selected) return {};
+  if (selected.kind === "rarities") return { rarity: selected.id === "unknown" ? "" : selected.id };
+  if (selected.kind === "types") return { type: selected.id };
+  return { size: Number(selected.id) };
+}
+
+function writeDetailFact(facts, field, id) {
+  if (field === "rarities") facts.rarity = id === "unknown" ? "" : id;
+  else if (field === "types") facts.type = id === "unknown" ? "" : id;
+  else facts.size = id === "unknown" ? null : Number(id);
+}
+
+function itemMatches(item, facts) {
+  if (Object.prototype.hasOwnProperty.call(facts, "rarity")) {
+    if (facts.rarity ? item.rarity !== facts.rarity : Boolean(item.rarity)) return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(facts, "type")) {
+    if (facts.type ? item.type !== facts.type : Boolean(item.type)) return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(facts, "size")) {
+    if (facts.size != null ? item.size !== facts.size : item.size != null) return false;
+  }
+  return true;
+}
+
+function countFacts(facts) {
+  return state.board.items.filter((item) => itemMatches(item, facts)).length;
+}
+
+function removeOneItem(facts) {
+  const ranked = state.board.items
+    .map((item, index) => ({ item, index }))
+    .filter((entry) => itemMatches(entry.item, facts))
+    .sort((left, right) => detailSpecificity(left.item) - detailSpecificity(right.item) || right.index - left.index);
+  if (!ranked.length) return false;
+  state.board.items.splice(ranked[0].index, 1);
+  return true;
+}
+
+function detailSpecificity(item) {
+  return (item.rarity ? 1 : 0) + (item.type ? 1 : 0) + (item.size != null ? 1 : 0) + (item.price != null ? 1 : 0);
+}
+
+function levelChoices(kind) {
+  if (kind === "rarities") {
+    return state.data.rarities.map((entry) => ({
+      id: entry.id,
+      label: entry.name,
+      color: entry.color,
+      ink: entry.ink
+    }));
+  }
+  if (kind === "types") return state.data.types.map((entry) => ({ id: entry.id, label: entry.name }));
+  return state.data.sizePresets.map((size) => ({ id: String(size), label: sizeLabel(size) }));
+}
+
 function renderDetail() {
   const box = $("#detail");
   const items = matchingItems();
@@ -904,34 +903,100 @@ function renderDetail() {
   const list = $("#detail-list");
   list.replaceChildren();
   if (!items.length) return;
-  items.forEach((item) => {
-    const row = document.createElement("li");
-    row.className = "detail-item";
-    const text = document.createElement("div");
-    const title = document.createElement("p");
-    title.textContent = itemSummary(item);
-    const price = document.createElement("p");
-    price.className = "detail-price";
-    price.textContent = item.price == null ? "Price hidden" : `Exact ${formatCoins(item.price)}`;
-    text.append(title, price);
-    const actions = document.createElement("div");
-    actions.className = "detail-actions";
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = "text-btn";
-    add.dataset.detail = item.id;
-    add.textContent = "Add detail";
-    add.setAttribute("aria-expanded", state.editing === item.id ? "true" : "false");
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "text-btn";
-    remove.dataset.remove = item.id;
-    remove.textContent = "Remove";
-    actions.append(add, remove);
-    row.append(text, actions);
-    if (state.editing === item.id) row.appendChild(buildDetailEditor(item));
-    list.appendChild(row);
+  const levels = detailLevels(state.selected.kind);
+  const parent = parentFacts(state.selected);
+  const rows = rowsFor(levels[0], parent);
+  rows.forEach((choice) => {
+    const facts = Object.assign({}, parent);
+    writeDetailFact(facts, levels[0], choice.id);
+    const open = state.detailOpen === `${levels[0]}:${choice.id}`;
+    list.appendChild(stepRow(choice, levels[0], facts, open, levels[1]));
   });
+}
+
+function rowsFor(kind, parent) {
+  const rows = levelChoices(kind).map((choice) => {
+    const facts = Object.assign({}, parent);
+    writeDetailFact(facts, kind, choice.id);
+    return Object.assign({}, choice, { count: countFacts(facts) });
+  });
+  const unknownFacts = Object.assign({}, parent);
+  writeDetailFact(unknownFacts, kind, "unknown");
+  const unknownCount = countFacts(unknownFacts);
+  if (unknownCount > 0) rows.push({ id: "unknown", label: "Unknown", count: unknownCount });
+  return rows;
+}
+
+function stepRow(choice, field, facts, open, childField) {
+  const row = document.createElement("li");
+  row.className = open ? "step-row is-open" : "step-row";
+  const label = document.createElement("button");
+  label.type = "button";
+  label.className = "step-label";
+  label.dataset.openRow = `${field}:${choice.id}`;
+  label.textContent = choice.label;
+  label.setAttribute("aria-expanded", open ? "true" : "false");
+  if (choice.color) label.style.color = choice.color;
+  row.append(label, stepper(choice.count, field, choice.id));
+  if (!open || !childField) return row;
+  const nested = document.createElement("ul");
+  nested.className = "step-children";
+  const childRows = levelChoices(childField).map((child) => {
+    const childFacts = Object.assign({}, facts);
+    writeDetailFact(childFacts, childField, child.id);
+    return Object.assign({}, child, { count: countFacts(childFacts) });
+  });
+  const unknownFacts = Object.assign({}, facts);
+  writeDetailFact(unknownFacts, childField, "unknown");
+  const unknownCount = countFacts(unknownFacts);
+  if (unknownCount > 0) childRows.push({ id: "unknown", label: "Unknown", count: unknownCount });
+  childRows.forEach((child) => {
+    const childRow = document.createElement("li");
+    childRow.className = "step-row";
+    const name = document.createElement("span");
+    name.className = "step-label is-static";
+    name.textContent = child.label;
+    if (child.color) name.style.color = child.color;
+    childRow.append(name, stepper(child.count, field, choice.id, childField, child.id));
+    nested.appendChild(childRow);
+  });
+  row.appendChild(nested);
+  return row;
+}
+
+function stepper(count, field, id, childField, childId) {
+  const box = document.createElement("div");
+  box.className = "stepper";
+  const down = document.createElement("button");
+  down.type = "button";
+  down.className = "step-btn";
+  down.dataset.adjust = "-1";
+  down.dataset.field = field;
+  down.dataset.id = id;
+  if (childField) {
+    down.dataset.childField = childField;
+    down.dataset.childId = childId;
+  }
+  down.textContent = "−";
+  down.disabled = count < 1;
+  down.setAttribute("aria-label", "Decrease");
+  const number = document.createElement("span");
+  number.className = "step-count";
+  number.textContent = String(count);
+  const up = document.createElement("button");
+  up.type = "button";
+  up.className = "step-btn";
+  up.dataset.adjust = "1";
+  up.dataset.field = field;
+  up.dataset.id = id;
+  if (childField) {
+    up.dataset.childField = childField;
+    up.dataset.childId = childId;
+  }
+  up.textContent = "+";
+  up.setAttribute("aria-label", "Increase");
+  box.append(down, number, up);
+  return box;
 }
 
 function renderEstimate() {
@@ -1244,5 +1309,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=33").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=37").catch(() => {});
 }
