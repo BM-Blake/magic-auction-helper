@@ -4,9 +4,15 @@
     "mode": "Magic Auction",
     "season": "7.1",
     "currency": "Magic Auction Coins",
-    "estimateDisclaimer": "The ranges below are editable starting points, not official prices. Rarity and type choose the band. Size only nudges it, because a 1-tile treasure can be worth more than a large one. When the game shows a price, enter it — that exact number replaces the range.",
+    "estimateDisclaimer": "Ranges are editable starting points, not official prices. Estimate worth uses how many of each rarity, type, and size are marked. Exact price is the total of prices the game has actually shown.",
     "howToEdit": "Each estimates row is one rarity and one type group, in Magic Auction Coins, before the size nudge. sizeBands then multiply those bounds. Raise or lower a row when you learn a better range from your own auctions."
   },
+  "houses": [
+    { "id": "eruditio", "name": "Eruditio" },
+    { "id": "dawnlight", "name": "Dawnlight" },
+    { "id": "world", "name": "World" },
+    { "id": "cosmic", "name": "Cosmic" }
+  ],
   "rarities": [
     { "id": "gray", "name": "Gray", "color": "#c5ccd6", "ink": "#1b1e26" },
     { "id": "green", "name": "Green", "color": "#5dce86", "ink": "#102216" },

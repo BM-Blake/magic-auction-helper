@@ -1,11 +1,13 @@
 "use strict";
 
-const STORAGE_KEY = "magic-auction-pool-v1";
+const STORAGE_KEY = "magic-auction-items-v1";
+const COUNT_LIMIT = 30;
 
 const state = {
   data: null,
-  items: [],
-  editingId: null
+  board: null,
+  selected: null,
+  draft: emptyDraft()
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -25,52 +27,69 @@ async function init() {
   } catch (error) {
     $("#load-error").hidden = false;
     $("#load-error").textContent = "Could not load data/auction.json. The tracker needs that file beside this page.";
-    $("#form").hidden = true;
+    $("#info-heading").closest("section").hidden = true;
+    $("#fab").hidden = true;
     return;
   }
 
   $("#disclaimer").textContent = state.data.meta.estimateDisclaimer;
-  state.items = loadItems();
-  buildChips();
+  state.board = loadBoard();
+  buildHouseOptions();
+  buildAddChoices();
   render();
   registerWorker();
 }
 
 function bindStaticEvents() {
-  $("#form").addEventListener("submit", onSubmit);
-  $("#cancel-edit").addEventListener("click", cancelEdit);
-  $("#clear").addEventListener("click", clearAuction);
-  $("#size").addEventListener("input", syncSizeChips);
-  $("#rarities").addEventListener("click", (event) => toggleChip(event, "rarity"));
-  $("#types").addEventListener("click", (event) => toggleChip(event, "type"));
-  $("#sizes").addEventListener("click", onSizeChip);
-  $("#list").addEventListener("click", onListClick);
+  $("#house").addEventListener("change", onHouseChange);
+  $("#end-game").addEventListener("click", endGame);
+  $("#fab").addEventListener("click", () => setSheet($("#sheet").hidden));
+  $("#close-sheet").addEventListener("click", () => setSheet(false));
+  $("#sheet").addEventListener("submit", onAdd);
+  $("#sheet").addEventListener("click", onDraftClick);
+  $("#rarities").addEventListener("click", onSummaryClick);
+  $("#types").addEventListener("click", onSummaryClick);
+  $("#sizes").addEventListener("click", onSummaryClick);
+  $("#detail-list").addEventListener("click", onDetailClick);
 }
 
-function buildChips() {
-  const rarities = $("#rarities");
-  const types = $("#types");
-  const sizes = $("#sizes");
+function emptyDraft() {
+  return { rarity: "", type: "", size: "" };
+}
 
+function buildHouseOptions() {
+  const house = $("#house");
+  state.data.houses.forEach((entry) => {
+    const option = document.createElement("option");
+    option.value = entry.id;
+    option.textContent = entry.name;
+    house.appendChild(option);
+  });
+  if (!state.data.houses.some((entry) => entry.id === state.board.house)) {
+    state.board.house = state.data.houses[0].id;
+  }
+  house.value = state.board.house;
+}
+
+function buildAddChoices() {
   state.data.rarities.forEach((rarity) => {
-    rarities.appendChild(makeChip(rarity.name, "rarity", rarity.id, rarity.color, rarity.ink));
+    $("#add-rarities").appendChild(choiceChip("rarity", rarity.id, rarity.name, rarity.color, rarity.ink));
   });
-
   state.data.types.forEach((type) => {
-    types.appendChild(makeChip(type.name, "type", type.id));
+    $("#add-types").appendChild(choiceChip("type", type.id, type.name));
   });
-
   state.data.sizePresets.forEach((size) => {
-    sizes.appendChild(makeChip(String(size), "size", String(size)));
+    $("#add-sizes").appendChild(choiceChip("size", String(size), String(size)));
   });
 }
 
-function makeChip(label, kind, value, color, ink) {
+function choiceChip(kind, id, label, color, ink) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "chip";
+  button.dataset.pick = kind;
+  button.dataset.id = id;
   button.textContent = label;
-  button.dataset[kind] = value;
   button.setAttribute("aria-pressed", "false");
   if (color) {
     button.style.setProperty("--chip", color);
@@ -79,272 +98,355 @@ function makeChip(label, kind, value, color, ink) {
   return button;
 }
 
-function toggleChip(event, kind) {
-  const button = event.target.closest(`[data-${kind}]`);
-  if (!button) return;
-  const next = button.getAttribute("aria-pressed") !== "true";
-  document.querySelectorAll(`[data-${kind}]`).forEach((chip) => chip.setAttribute("aria-pressed", "false"));
-  button.setAttribute("aria-pressed", next ? "true" : "false");
-  hideFormError();
+function onHouseChange() {
+  if (!state.board) return;
+  state.board.house = $("#house").value;
+  persist();
 }
 
-function onSizeChip(event) {
-  const button = event.target.closest("[data-size]");
-  if (!button) return;
-  const next = button.getAttribute("aria-pressed") !== "true";
-  document.querySelectorAll("[data-size]").forEach((chip) => chip.setAttribute("aria-pressed", "false"));
-  if (next) {
-    button.setAttribute("aria-pressed", "true");
-    $("#size").value = button.dataset.size;
-  } else {
-    $("#size").value = "";
-  }
-  hideFormError();
+function setSheet(open) {
+  $("#sheet").hidden = !open;
+  $("#fab").textContent = open ? "×" : "+";
+  $("#fab").setAttribute("aria-label", open ? "Close add form" : "Add a revealed treasure");
+  if (open) $("#new-price").focus();
 }
 
-function syncSizeChips() {
-  const value = $("#size").value.trim();
-  document.querySelectorAll("[data-size]").forEach((chip) => {
-    chip.setAttribute("aria-pressed", chip.dataset.size === value ? "true" : "false");
+function onDraftClick(event) {
+  const button = event.target.closest("[data-pick]");
+  if (!button) return;
+  const kind = button.dataset.pick;
+  state.draft[kind] = state.draft[kind] === button.dataset.id ? "" : button.dataset.id;
+  syncDraft();
+  hideError();
+}
+
+function syncDraft() {
+  document.querySelectorAll("[data-pick]").forEach((button) => {
+    button.setAttribute("aria-pressed", state.draft[button.dataset.pick] === button.dataset.id ? "true" : "false");
   });
 }
 
-function onSubmit(event) {
+function onAdd(event) {
   event.preventDefault();
-  const draft = readForm();
-  const error = validate(draft);
-  if (error) {
-    showFormError(error);
+  const raw = $("#new-price").value;
+  const price = parseCoins(raw);
+  if (raw.trim() && Number.isNaN(price)) {
+    showError("Enter a price like 120000, 120k, or 1.2m.");
     return;
   }
-
-  if (state.editingId) {
-    const index = state.items.findIndex((item) => item.id === state.editingId);
-    if (index !== -1) state.items[index] = { id: state.editingId, ...draft };
-  } else {
-    state.items.push({ id: createId(), ...draft });
+  if (!state.draft.rarity && !state.draft.type && !state.draft.size && price == null) {
+    showError("Choose a rarity, type, size, or price.");
+    return;
   }
-
-  state.editingId = null;
-  clearForm();
+  hideError();
+  state.board.items.push({
+    id: createId(),
+    rarity: state.draft.rarity,
+    type: state.draft.type,
+    size: state.draft.size ? Number(state.draft.size) : null,
+    price
+  });
+  state.draft = emptyDraft();
+  $("#new-price").value = "";
+  syncDraft();
+  setSheet(false);
   persist();
   render();
 }
 
-function onListClick(event) {
-  const edit = event.target.closest("[data-edit]");
-  const remove = event.target.closest("[data-remove]");
-  if (edit) startEdit(edit.dataset.edit);
-  if (remove) removeItem(remove.dataset.remove);
-}
-
-function startEdit(id) {
-  const item = state.items.find((entry) => entry.id === id);
-  if (!item) return;
-  state.editingId = id;
-  setPressed("rarity", item.rarity);
-  setPressed("type", item.type);
-  $("#size").value = item.size == null ? "" : String(item.size);
-  syncSizeChips();
-  $("#price").value = item.price == null ? "" : formatCoins(item.price);
-  $("#label").value = item.label;
-  hideFormError();
-  render();
-  $("#form").scrollIntoView({ block: "center" });
-}
-
-function cancelEdit() {
-  state.editingId = null;
-  clearForm();
+function onSummaryClick(event) {
+  const button = event.target.closest("[data-open]");
+  if (!button || !state.board) return;
+  const next = { kind: button.dataset.open, id: button.dataset.id };
+  const same = state.selected && state.selected.kind === next.kind && state.selected.id === next.id;
+  state.selected = same ? null : next;
   render();
 }
 
-function removeItem(id) {
-  state.items = state.items.filter((item) => item.id !== id);
-  if (state.editingId === id) {
-    state.editingId = null;
-    clearForm();
-  }
+function onDetailClick(event) {
+  const button = event.target.closest("[data-remove]");
+  if (!button) return;
+  state.board.items = state.board.items.filter((item) => item.id !== button.dataset.remove);
+  if (state.selected && !matchingItems().length) state.selected = null;
   persist();
   render();
 }
 
-function clearAuction() {
-  if (!state.items.length) return;
-  if (!window.confirm("Clear every treasure in this auction?")) return;
-  state.items = [];
-  state.editingId = null;
-  clearForm();
+function endGame() {
+  if (!state.board) return;
+  if (state.board.items.length && !window.confirm("End this game and clear the revealed information?")) return;
+  state.board.items = [];
+  state.selected = null;
+  state.draft = emptyDraft();
+  $("#new-price").value = "";
+  syncDraft();
+  hideError();
+  setSheet(false);
   persist();
   render();
-}
-
-function readForm() {
-  return {
-    rarity: pressedValue("rarity"),
-    type: pressedValue("type"),
-    size: parseSize($("#size").value),
-    price: parseCoins($("#price").value),
-    label: $("#label").value.trim().slice(0, 40)
-  };
-}
-
-function validate(draft) {
-  const sizeText = $("#size").value.trim();
-  const priceText = $("#price").value.trim();
-  if (sizeText && Number.isNaN(draft.size)) return "Size is a tile count from 1 to 64.";
-  if (priceText && Number.isNaN(draft.price)) return "Enter a price like 120000, 120k, or 1.2m.";
-  if (!draft.rarity && !draft.type && draft.size == null && draft.price == null) {
-    return "Add a rarity, type, size, or price.";
-  }
-  return "";
 }
 
 function render() {
-  const editing = Boolean(state.editingId);
-  $("#form-title").textContent = editing ? "Edit revealed treasure" : "Add a revealed treasure";
-  $("#save").textContent = editing ? "Save changes" : "Add to pool";
-  $("#cancel-edit").hidden = !editing;
-  renderSummary();
-  renderList();
+  const counts = tally(state.board.items, state.data);
+  renderGroup($("#rarities"), $("#rarity-group"), "rarities", state.data.rarities.map((entry) => ({
+    id: entry.id,
+    label: entry.name,
+    count: counts.rarities[entry.id] || 0,
+    color: entry.color,
+    ink: entry.ink
+  })));
+  renderGroup($("#types"), $("#type-group"), "types", state.data.types.map((entry) => ({
+    id: entry.id,
+    label: entry.name,
+    count: counts.types[entry.id] || 0
+  })));
+  renderGroup($("#sizes"), $("#size-group"), "sizes", state.data.sizePresets.map((size) => ({
+    id: String(size),
+    label: String(size),
+    count: counts.sizes[String(size)] || 0
+  })));
+  $("#info-empty").hidden = state.board.items.length > 0;
+  renderDetail();
+  renderEstimate(counts);
+  renderExact();
 }
 
-function renderSummary() {
-  const totals = summarize(state.items, state.data);
-  const range = $("#worth-range");
-  const detail = $("#worth-detail");
-
-  if (!state.items.length) {
-    range.textContent = "0";
-    detail.textContent = "No treasures yet";
-    return;
-  }
-
-  if (!totals.known) {
-    range.textContent = "—";
-    const verb = state.items.length === 1 ? "needs" : "need";
-    detail.textContent = `${state.items.length} revealed still ${verb} a rarity or a price`;
-    return;
-  }
-
-  range.textContent = totals.min === totals.max
-    ? formatCoins(totals.min)
-    : `${formatCoins(totals.min)} – ${formatCoins(totals.max)}`;
-
-  const parts = [`${state.items.length} revealed`];
-  if (totals.exactCount) parts.push(`${totals.exactCount} exact`);
-  if (totals.approxCount) parts.push(`${totals.approxCount} approximate`);
-  if (totals.unknown) parts.push(`${totals.unknown} unpriced`);
-  detail.textContent = parts.join(" · ");
+function renderGroup(container, fieldset, kind, entries) {
+  container.replaceChildren();
+  const visible = entries.filter((entry) => entry.count > 0);
+  fieldset.hidden = visible.length === 0;
+  visible.forEach((entry) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip is-on";
+    button.dataset.open = kind;
+    button.dataset.id = entry.id;
+    const selected = state.selected && state.selected.kind === kind && state.selected.id === entry.id;
+    button.classList.toggle("is-selected", selected);
+    button.setAttribute("aria-pressed", selected ? "true" : "false");
+    if (entry.color) {
+      button.style.setProperty("--chip", entry.color);
+      button.style.setProperty("--chip-ink", entry.ink);
+    }
+    const name = document.createElement("span");
+    name.textContent = entry.label;
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = String(entry.count);
+    button.append(name, count);
+    container.appendChild(button);
+  });
 }
 
-function renderList() {
-  const list = $("#list");
+function renderDetail() {
+  const box = $("#detail");
+  const items = matchingItems();
+  if (!state.selected || !items.length) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  $("#detail-title").textContent = selectionLabel(state.selected);
+  const list = $("#detail-list");
   list.replaceChildren();
-  $("#empty").hidden = state.items.length > 0;
-
-  state.items.forEach((item) => {
-    const worth = worthOf(item, state.data);
-    const li = document.createElement("li");
-    li.className = item.id === state.editingId ? "item is-editing" : "item";
-
-    const rail = document.createElement("span");
-    rail.className = "rail";
-    rail.style.setProperty("--rarity", rarityColor(item.rarity));
-
-    const body = document.createElement("div");
-    const title = document.createElement("p");
-    title.className = "item-title";
-    title.textContent = itemTitle(item);
-    body.append(title);
-
-    const metaText = itemMeta(item);
-    if (metaText) {
-      const meta = document.createElement("p");
-      meta.className = "item-meta";
-      meta.textContent = metaText;
-      body.append(meta);
-    }
-
-    const worthLine = document.createElement("p");
-    worthLine.className = worth.kind === "exact" ? "item-worth exact" : "item-worth";
-    worthLine.textContent = worthText(worth);
-    body.append(worthLine);
-
-    const note = gapNote(item, worth);
-    if (note) {
-      const noteLine = document.createElement("p");
-      noteLine.className = "item-note";
-      noteLine.textContent = note;
-      body.append(noteLine);
-    }
-
-    const actions = document.createElement("div");
-    actions.className = "item-actions";
-    actions.append(actionButton("Edit", "edit", item.id), actionButton("Remove", "remove", item.id));
-    body.append(actions);
-
-    li.append(rail, body);
-    list.append(li);
-  });
-}
-
-function actionButton(label, action, id) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = label;
-  button.dataset[action] = id;
-  return button;
-}
-
-function summarize(items, data) {
-  const totals = { min: 0, max: 0, exactCount: 0, approxCount: 0, unknown: 0, known: false };
   items.forEach((item) => {
-    const worth = worthOf(item, data);
-    if (worth.kind === "exact") {
-      totals.min += worth.min;
-      totals.max += worth.max;
-      totals.exactCount += 1;
-      totals.known = true;
-    } else if (worth.kind === "approx") {
-      totals.min += worth.min;
-      totals.max += worth.max;
-      totals.approxCount += 1;
-      totals.known = true;
-    } else {
-      totals.unknown += 1;
-    }
+    const row = document.createElement("li");
+    row.className = "detail-item";
+    const text = document.createElement("div");
+    const title = document.createElement("p");
+    title.textContent = itemSummary(item);
+    const price = document.createElement("p");
+    price.className = "detail-price";
+    price.textContent = item.price == null ? "Price hidden" : `Exact ${formatCoins(item.price)}`;
+    text.append(title, price);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "text-btn";
+    remove.dataset.remove = item.id;
+    remove.textContent = "Remove";
+    row.append(text, remove);
+    list.appendChild(row);
   });
-  return totals;
 }
 
-function worthOf(item, data) {
-  if (item.price != null) return { kind: "exact", min: item.price, max: item.price };
+function renderEstimate(counts) {
+  const worth = estimateWorth(counts, state.data);
+  $("#worth-range").textContent = !worth || worth.max === 0
+    ? "0"
+    : worth.min === worth.max
+      ? formatCoins(worth.min)
+      : `${formatCoins(worth.min)} – ${formatCoins(worth.max)}`;
+}
 
-  if (!item.rarity) return { kind: "unknown" };
+function renderExact() {
+  const total = state.board.items.reduce((sum, item) => sum + (item.price == null ? 0 : item.price), 0);
+  $("#exact-total").textContent = formatCoins(total);
+}
 
-  const type = data.types.find((entry) => entry.id === item.type);
-  const rows = data.estimates.filter((entry) => {
-    return entry.rarity === item.rarity && (!type || entry.group === type.group);
+function matchingItems() {
+  if (!state.selected) return [];
+  return state.board.items.filter((item) => {
+    if (state.selected.kind === "rarities") return item.rarity === state.selected.id;
+    if (state.selected.kind === "types") return item.type === state.selected.id;
+    return item.size != null && String(item.size) === state.selected.id;
   });
-  if (!rows.length) return { kind: "unknown" };
+}
 
-  let min = Math.min(...rows.map((entry) => entry.min));
-  let max = Math.max(...rows.map((entry) => entry.max));
-  const band = item.size == null
-    ? null
-    : data.sizeBands.find((entry) => item.size >= entry.minTiles && item.size <= entry.maxTiles);
+function selectionLabel(selected) {
+  if (selected.kind === "rarities") return rarityName(selected.id);
+  if (selected.kind === "types") return typeName(selected.id);
+  return `${selected.id} tiles`;
+}
 
-  if (band) {
-    min *= band.minScale;
-    max *= band.maxScale;
-  } else if (item.size == null) {
-    min *= Math.min(...data.sizeBands.map((entry) => entry.minScale));
-    max *= Math.max(...data.sizeBands.map((entry) => entry.maxScale));
+function itemSummary(item) {
+  const parts = [];
+  if (item.rarity) parts.push(rarityName(item.rarity));
+  if (item.type) parts.push(typeName(item.type));
+  if (item.size != null) parts.push(`${item.size} tile${item.size === 1 ? "" : "s"}`);
+  return parts.join(" · ") || "Revealed treasure";
+}
+
+function rarityName(id) {
+  return state.data.rarities.find((entry) => entry.id === id)?.name || id;
+}
+
+function typeName(id) {
+  return state.data.types.find((entry) => entry.id === id)?.name || id;
+}
+
+function tally(items, data) {
+  const rarities = zeroMap(data.rarities);
+  const types = zeroMap(data.types);
+  const sizes = zeroSizes(data.sizePresets);
+  items.forEach((item) => {
+    if (item.rarity && Object.prototype.hasOwnProperty.call(rarities, item.rarity)) rarities[item.rarity] += 1;
+    if (item.type && Object.prototype.hasOwnProperty.call(types, item.type)) types[item.type] += 1;
+    if (item.size != null && Object.prototype.hasOwnProperty.call(sizes, String(item.size))) sizes[String(item.size)] += 1;
+  });
+  return { rarities, types, sizes };
+}
+
+function estimateWorth(board, data) {
+  const rarities = expandCounts(board.rarities);
+  if (!rarities.length) return { min: 0, max: 0 };
+
+  const typeGroups = expandCounts(board.types)
+    .map((id) => data.types.find((entry) => entry.id === id)?.group || null)
+    .filter(Boolean);
+  const sizes = expandCounts(board.sizes).map(Number);
+  const slots = typeGroups.slice(0, rarities.length);
+  while (slots.length < rarities.length) slots.push(null);
+
+  const minMatrix = rarities.map((rarity) => slots.map((group) => boundsFor(rarity, group, data).min));
+  const maxMatrix = rarities.map((rarity) => slots.map((group) => boundsFor(rarity, group, data).max));
+  const minBases = assignValues(minMatrix, false);
+  const maxBases = assignValues(maxMatrix, true);
+
+  return tidyRange(
+    applyScales(minBases, sizes, data, false),
+    applyScales(maxBases, sizes, data, true)
+  );
+}
+
+function boundsFor(rarity, group, data) {
+  const rows = data.estimates.filter((entry) => entry.rarity === rarity && (!group || entry.group === group));
+  return {
+    min: Math.min(...rows.map((entry) => entry.min)),
+    max: Math.max(...rows.map((entry) => entry.max))
+  };
+}
+
+function assignValues(matrix, pickMax) {
+  const count = matrix.length;
+  if (count > 12) return greedyValues(matrix, pickMax);
+
+  const full = (1 << count) - 1;
+  const score = new Map([[0, 0]]);
+  const choice = new Map();
+
+  for (let mask = 0; mask <= full; mask += 1) {
+    if (!score.has(mask)) continue;
+    const row = bitCount(mask);
+    if (row >= count) continue;
+    for (let column = 0; column < count; column += 1) {
+      if (mask & (1 << column)) continue;
+      const nextMask = mask | (1 << column);
+      const nextScore = score.get(mask) + matrix[row][column];
+      if (!score.has(nextMask) || (pickMax ? nextScore > score.get(nextMask) : nextScore < score.get(nextMask))) {
+        score.set(nextMask, nextScore);
+        choice.set(nextMask, column);
+      }
+    }
   }
 
-  const tidy = tidyRange(min, max);
-  return { kind: "approx", min: tidy.min, max: tidy.max };
+  const values = new Array(count);
+  let mask = full;
+  for (let row = count - 1; row >= 0; row -= 1) {
+    const column = choice.get(mask);
+    values[row] = matrix[row][column];
+    mask ^= 1 << column;
+  }
+  return values;
+}
+
+function greedyValues(matrix, pickMax) {
+  const used = new Array(matrix.length).fill(false);
+  return matrix.map((row) => {
+    let bestColumn = 0;
+    let best = pickMax ? -Infinity : Infinity;
+    row.forEach((value, column) => {
+      if (used[column]) return;
+      if (pickMax ? value > best : value < best) {
+        best = value;
+        bestColumn = column;
+      }
+    });
+    used[bestColumn] = true;
+    return best;
+  });
+}
+
+function applyScales(bases, sizes, data, pickMax) {
+  const scales = sizes.slice(0, bases.length).map((size) => scaleFor(size, data));
+  if (sizes.length > bases.length) {
+    const ranked = sizes
+      .map((size) => scaleFor(size, data))
+      .sort((a, b) => pickMax ? b.maxScale - a.maxScale : a.minScale - b.minScale);
+    scales.splice(0, scales.length, ...ranked.slice(0, bases.length));
+  }
+  while (scales.length < bases.length) scales.push(scaleFor(null, data));
+
+  const orderedBases = [...bases].sort((a, b) => b - a);
+  const orderedScales = [...scales].sort((a, b) => {
+    const left = pickMax ? a.maxScale : a.minScale;
+    const right = pickMax ? b.maxScale : b.minScale;
+    return pickMax ? right - left : left - right;
+  });
+
+  return orderedBases.reduce((sum, base, index) => {
+    const scale = pickMax ? orderedScales[index].maxScale : orderedScales[index].minScale;
+    return sum + base * scale;
+  }, 0);
+}
+
+function scaleFor(size, data) {
+  if (size == null) {
+    return {
+      minScale: Math.min(...data.sizeBands.map((band) => band.minScale)),
+      maxScale: Math.max(...data.sizeBands.map((band) => band.maxScale))
+    };
+  }
+  const band = data.sizeBands.find((entry) => size >= entry.minTiles && size <= entry.maxTiles);
+  return band ? { minScale: band.minScale, maxScale: band.maxScale } : { minScale: 1, maxScale: 1 };
+}
+
+function expandCounts(counts) {
+  const list = [];
+  Object.entries(counts || {}).forEach(([id, count]) => {
+    const total = Math.max(0, Math.min(COUNT_LIMIT, Number(count) || 0));
+    for (let index = 0; index < total; index += 1) list.push(id);
+  });
+  return list;
 }
 
 function tidyRange(min, max) {
@@ -360,54 +462,14 @@ function stepFor(value) {
   return 100;
 }
 
-function itemTitle(item) {
-  if (item.label) return item.label;
-  const rarity = rarityName(item.rarity);
-  const type = typeName(item.type);
-  return [rarity, type].filter(Boolean).join(" · ") || "Revealed treasure";
-}
-
-function itemMeta(item) {
-  const parts = [];
-  if (item.label) {
-    const rarity = rarityName(item.rarity);
-    const type = typeName(item.type);
-    if (rarity) parts.push(rarity);
-    if (type) parts.push(type);
+function bitCount(value) {
+  let count = 0;
+  let bits = value;
+  while (bits) {
+    bits &= bits - 1;
+    count += 1;
   }
-  if (item.size != null) parts.push(`${item.size} tile${item.size === 1 ? "" : "s"}`);
-  return parts.join(" · ");
-}
-
-function worthText(worth) {
-  if (worth.kind === "exact") return `Exact ${formatCoins(worth.min)}`;
-  if (worth.kind === "approx") {
-    return worth.min === worth.max
-      ? `Approx ${formatCoins(worth.min)}`
-      : `Approx ${formatCoins(worth.min)} – ${formatCoins(worth.max)}`;
-  }
-  return "Needs a rarity or a price";
-}
-
-function gapNote(item, worth) {
-  if (worth.kind !== "approx" || worth.max < worth.min * 4) return "";
-  const missing = [];
-  if (!item.type) missing.push("type");
-  if (item.size == null) missing.push("size");
-  if (!missing.length) return "";
-  return `Wide range because ${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} still hidden.`;
-}
-
-function rarityName(id) {
-  return state.data.rarities.find((entry) => entry.id === id)?.name || "";
-}
-
-function typeName(id) {
-  return state.data.types.find((entry) => entry.id === id)?.name || "";
-}
-
-function rarityColor(id) {
-  return state.data.rarities.find((entry) => entry.id === id)?.color || "";
+  return count;
 }
 
 function parseCoins(raw) {
@@ -423,71 +485,58 @@ function parseCoins(raw) {
   return Math.round(value);
 }
 
-function parseSize(raw) {
-  if (raw == null) return null;
-  const text = String(raw).trim();
-  if (!text) return null;
-  if (!/^\d+$/.test(text)) return Number.NaN;
-  const value = Number(text);
-  if (value < 1 || value > 64) return Number.NaN;
-  return value;
-}
-
 function formatCoins(value) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
-function countLabel(count, noun) {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+function zeroMap(entries) {
+  const map = {};
+  entries.forEach((entry) => { map[entry.id] = 0; });
+  return map;
 }
 
-function pressedValue(kind) {
-  return document.querySelector(`[data-${kind}][aria-pressed="true"]`)?.dataset[kind] || "";
+function zeroSizes(presets) {
+  const map = {};
+  presets.forEach((size) => { map[String(size)] = 0; });
+  return map;
 }
 
-function setPressed(kind, value) {
-  document.querySelectorAll(`[data-${kind}]`).forEach((chip) => {
-    chip.setAttribute("aria-pressed", chip.dataset[kind] === value ? "true" : "false");
-  });
-}
-
-function clearForm() {
-  setPressed("rarity", "");
-  setPressed("type", "");
-  setPressed("size", "");
-  $("#size").value = "";
-  $("#price").value = "";
-  $("#label").value = "";
-  hideFormError();
-}
-
-function showFormError(message) {
-  const error = $("#form-error");
-  error.hidden = false;
-  error.textContent = message;
-}
-
-function hideFormError() {
-  $("#form-error").hidden = true;
-}
-
-function loadItems() {
+function loadBoard() {
+  const blank = { house: state.data.houses[0].id, items: [] };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (!saved || !Array.isArray(saved.items)) return [];
-    return saved.items.filter((item) => item && typeof item.id === "string");
+    if (!saved || typeof saved !== "object") return blank;
+    const items = Array.isArray(saved.items) ? saved.items.filter(validItem) : [];
+    return {
+      house: typeof saved.house === "string" ? saved.house : blank.house,
+      items
+    };
   } catch (error) {
-    return [];
+    return blank;
   }
 }
 
+function validItem(item) {
+  return item && typeof item.id === "string";
+}
+
 function persist() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ items: state.items }));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.board));
 }
 
 function createId() {
   if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function showError(message) {
+  const error = $("#form-error");
+  error.hidden = false;
+  error.textContent = message;
+}
+
+function hideError() {
+  $("#form-error").hidden = true;
 }
 
 function refreshNetwork() {

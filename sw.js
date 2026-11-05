@@ -1,4 +1,4 @@
-const CACHE = "magic-auction-v3";
+const CACHE = "magic-auction-v7";
 
 const ASSETS = [
   "./index.html",
