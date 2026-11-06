@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=66"),
-      fetch("data/treasures.json?v=66")
+      fetch("data/auction.json?v=67"),
+      fetch("data/treasures.json?v=67")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1182,9 +1182,10 @@ function renderDetail() {
     button.setAttribute("aria-expanded", open ? "true" : "false");
     const name = document.createElement("span");
     name.textContent = fieldLabel(field);
+    const total = unknown ? unknownCount(state.board, state.selected.kind) : items.length;
     const count = document.createElement("span");
     count.className = "count";
-    count.textContent = items.length ? `${filled} of ${items.length}` : String(filled);
+    count.textContent = total ? `${filled} of ${total}` : String(filled);
     button.append(name, count);
     row.appendChild(button);
     if (open) {
@@ -1856,5 +1857,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=66").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=67").catch(() => {});
 }
