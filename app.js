@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=61"),
-      fetch("data/treasures.json?v=61")
+      fetch("data/auction.json?v=66"),
+      fetch("data/treasures.json?v=66")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -50,6 +50,8 @@ function bindStaticEvents() {
     picker.querySelector(".house-toggle").addEventListener("click", () => onPickerToggle(kind));
     picker.querySelector(".house-menu").addEventListener("click", (event) => onPickerPick(kind, event));
   });
+  $("#known-toggle").addEventListener("click", onKnownToggle);
+  $("#known-menu").addEventListener("click", closeKnownMenu);
   document.addEventListener("click", onPickerDismiss);
   document.addEventListener("keydown", onPickerKey);
   $("#end-game").addEventListener("click", endGame);
@@ -395,6 +397,24 @@ function setPickerOpen(kind, open) {
 
 function closePickers() {
   Object.keys(pickers).forEach((kind) => setPickerOpen(kind, false));
+  closeKnownMenu();
+}
+
+function closeKnownMenu() {
+  const menu = $("#known-menu");
+  const toggle = $("#known-toggle");
+  if (!menu || !toggle) return;
+  menu.hidden = true;
+  toggle.setAttribute("aria-expanded", "false");
+}
+
+function onKnownToggle(event) {
+  event.stopPropagation();
+  const opening = $("#known-menu").hidden;
+  closePickers();
+  if (!opening) return;
+  $("#known-menu").hidden = false;
+  $("#known-toggle").setAttribute("aria-expanded", "true");
 }
 
 function onPickerToggle(kind) {
@@ -412,7 +432,7 @@ function onPickerPick(kind, event) {
 }
 
 function onPickerDismiss(event) {
-  if (event.target.closest("[data-picker]")) return;
+  if (event.target.closest("[data-picker], #known-picker")) return;
   closePickers();
 }
 
@@ -798,7 +818,7 @@ function decreaseChild(facts, field, id) {
   const specific = Object.assign({}, facts);
   writeDetailFact(specific, field, id);
   const match = state.board.items
-    .filter((item) => itemMatches(item, specific) && (field !== "sizes" || item.type !== "collection"))
+    .filter((item) => itemMatches(item, specific) && !exactTreasure(item) && (field !== "sizes" || item.type !== "collection"))
     .sort((left, right) => detailSpecificity(left) - detailSpecificity(right))[0];
   if (!match) return false;
   writeDetailFact(match, field, "unknown");
@@ -828,7 +848,7 @@ function endGame() {
 }
 
 function render() {
-  if (resolveUnknown()) persist();
+  if (resolveUnknown() || resolveExactItems()) persist();
   const house = state.data.houses.find((entry) => entry.id === state.board.house);
   const houseName = $("#house-name");
   if (houseName) houseName.textContent = house ? house.name : "";
@@ -861,6 +881,7 @@ function render() {
   renderEstimate();
   renderExact();
   renderTreasureTotal();
+  renderKnown();
 }
 
 function renderUnknown(kind) {
@@ -1043,7 +1064,7 @@ function canDecrease(facts, field, id) {
   if (id === "unknown") return false;
   const specific = Object.assign({}, facts);
   writeDetailFact(specific, field, id);
-  return state.board.items.some((item) => itemMatches(item, specific) && (field !== "sizes" || item.type !== "collection"));
+  return state.board.items.some((item) => itemMatches(item, specific) && !exactTreasure(item) && (field !== "sizes" || item.type !== "collection"));
 }
 
 function canAssign(facts, field, id) {
@@ -1061,7 +1082,7 @@ function factKind(field) {
 
 function openDonors(facts, field, id) {
   return state.board.items.filter((item) => {
-    if (!itemMatches(item, facts) || !childUnset(item, field)) return false;
+    if (!itemMatches(item, facts) || !childUnset(item, field) || exactTreasure(item)) return false;
     if (field === "sizes" && item.type === "collection") return false;
     return catalogSupports(choiceFacts(item, factKind(field), id));
   });
@@ -1195,20 +1216,32 @@ function appendItemEditors(list, items) {
 }
 
 function itemCard(item) {
+  const treasure = exactTreasure(item);
   const card = document.createElement("div");
-  card.className = "item-card";
+  card.className = treasure ? "item-card is-locked" : "item-card";
   card.dataset.item = item.id;
   if (item.rarity) {
     const rarity = state.data.rarities.find((entry) => entry.id === item.rarity);
     if (rarity) card.style.borderColor = rarity.color;
   }
-  card.append(itemPriceField(item), itemFactSelect(item, "rarity"), itemFactSelect(item, "type"), itemFactSelect(item, "size"));
+  if (treasure) {
+    const title = document.createElement("p");
+    title.className = "item-name";
+    title.textContent = treasure.name;
+    card.appendChild(title);
+  }
+  card.append(
+    itemPriceField(item, Boolean(treasure)),
+    itemFactSelect(item, "rarity", Boolean(treasure)),
+    itemFactSelect(item, "type", Boolean(treasure)),
+    itemFactSelect(item, "size", Boolean(treasure))
+  );
   return card;
 }
 
-function itemPriceField(item) {
+function itemPriceField(item, locked) {
   const label = document.createElement("label");
-  label.className = "field";
+  label.className = "field item-price";
   const name = document.createElement("span");
   name.textContent = "Exact price";
   const input = document.createElement("input");
@@ -1218,12 +1251,13 @@ function itemPriceField(item) {
   input.enterKeyHint = "done";
   input.placeholder = "120k or 1.2m";
   input.value = item.price == null ? "" : String(item.price);
+  input.disabled = locked;
   input.setAttribute("aria-label", "Exact price");
   label.append(name, input);
   return label;
 }
 
-function itemFactSelect(item, field) {
+function itemFactSelect(item, field, locked) {
   const label = document.createElement("label");
   label.className = "field";
   const name = document.createElement("span");
@@ -1267,6 +1301,7 @@ function itemFactSelect(item, field) {
       select.disabled = true;
     }
   }
+  if (locked) select.disabled = true;
   label.append(name, select);
   return label;
 }
@@ -1275,7 +1310,7 @@ function onItemEdit(event) {
   const card = event.target.closest("[data-item]");
   if (!card || !state.board) return;
   const item = state.board.items.find((entry) => entry.id === card.dataset.item);
-  if (!item) return;
+  if (!item || exactTreasure(item)) return;
   const field = event.target.dataset.itemField;
   if (field === "price") {
     const raw = event.target.value.trim();
@@ -1507,6 +1542,15 @@ function catalogWorth(board, data, pickMax) {
     .sort((left, right) => left.choices - right.choices || left.index - right.index);
   const used = new Set();
   return ordered.reduce((sum, entry) => {
+    if (entry.slot.exactPrice != null) {
+      const claimed = items.find((catalogItem) => {
+        if (used.has(catalogItem.index)) return false;
+        if (entry.slot.exactName) return catalogItem.name === entry.slot.exactName;
+        return Number(catalogItem.price) === entry.slot.exactPrice && matchesFacts(catalogItem, entry.slot);
+      });
+      if (claimed) used.add(claimed.index);
+      return sum + entry.slot.exactPrice;
+    }
     const pool = slotPool(entry.slot);
     const taken = takeItem(pool, used, entry.slot, rooms) ||
       (pool === items ? null : takeItem(items, used, entry.slot, rooms));
@@ -1521,6 +1565,17 @@ function estimateSlots(board) {
   const active = usesMaxConstraint(board);
   const slots = [];
   (board.items || []).forEach((item) => {
+    const exact = exactTreasure(item);
+    if (exact || item.price != null) {
+      slots.push({
+        rarity: item.rarity && item.rarity !== "unknown" ? item.rarity : exact && exact.rarity || null,
+        type: item.type || (exact && exact.type) || null,
+        size: item.size == null ? (exact ? Number(exact.size) : null) : item.size,
+        exactName: exact ? exact.name : null,
+        exactPrice: item.price != null ? Number(item.price) : Number(exact.price)
+      });
+      return;
+    }
     const rarity = item.rarity && item.rarity !== "unknown" ? item.rarity : null;
     slots.push({
       rarity,
@@ -1580,6 +1635,89 @@ function matchesFacts(item, slot) {
   if (slot.type && !typeMatches(item.type, slot.type)) return false;
   if (slot.size != null && item.size !== slot.size) return false;
   return true;
+}
+
+function exactTreasure(item) {
+  const treasures = state.data && state.data.treasures;
+  if (!item || !Array.isArray(treasures) || !treasures.length) return null;
+  if (item.price == null && !item.rarity && !item.type && item.size == null) return null;
+  const matches = treasures.filter((treasure) => {
+    if (item.price != null && Number(treasure.price) !== Number(item.price)) return false;
+    if (item.rarity && treasure.rarity !== item.rarity) return false;
+    if (item.type && !typeMatches(treasure.type, item.type)) return false;
+    if (item.size != null && Number(treasure.size) !== Number(item.size)) return false;
+    return true;
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function resolveExactItems() {
+  if (!state.board) return false;
+  let changed = false;
+  state.board.items.forEach((item) => {
+    const treasure = exactTreasure(item);
+    if (!treasure) {
+      if (item.catalogName) {
+        delete item.catalogName;
+        changed = true;
+      }
+      return;
+    }
+    if (item.catalogName !== treasure.name) {
+      item.catalogName = treasure.name;
+      changed = true;
+    }
+    if (!item.rarity && treasure.rarity) {
+      item.rarity = treasure.rarity;
+      changed = true;
+    }
+    if (!item.type && treasure.type) {
+      item.type = treasure.type;
+      changed = true;
+    }
+    if (item.size == null && treasure.size != null) {
+      item.size = Number(treasure.size);
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+function renderKnown() {
+  const current = $("#known-current");
+  const menu = $("#known-menu");
+  if (!current || !menu || !state.board) return;
+  const items = state.board.items
+    .map((item) => ({ item, treasure: exactTreasure(item) }))
+    .filter((entry) => entry.treasure);
+  current.textContent = items.length === 0 ? "None yet" : items.length === 1 ? "1 item" : `${items.length} items`;
+  menu.replaceChildren();
+  if (!items.length) {
+    const empty = document.createElement("li");
+    empty.className = "house-option";
+    empty.textContent = "None yet";
+    menu.appendChild(empty);
+    return;
+  }
+  items.forEach(({ item, treasure }) => {
+    const row = document.createElement("li");
+    row.className = "house-option";
+    row.setAttribute("role", "option");
+    row.dataset.item = item.id;
+    const rarity = state.data.rarities.find((entry) => entry.id === treasure.rarity);
+    if (rarity) {
+      row.classList.add("is-rarity");
+      row.style.setProperty("--chip", rarity.color);
+    }
+    const name = document.createElement("span");
+    name.className = "known-name";
+    name.textContent = treasure.name;
+    const price = document.createElement("span");
+    price.className = "known-price";
+    price.textContent = formatCoins(treasure.price);
+    row.append(name, price);
+    menu.appendChild(row);
+  });
 }
 
 function catalogSupports(facts) {
@@ -1718,5 +1856,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=61").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=66").catch(() => {});
 }

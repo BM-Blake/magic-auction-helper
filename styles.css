@@ -289,6 +289,49 @@ h2 { margin: 0 0 14px; font-weight: 650; font-size: 1rem; }
   overflow-wrap: anywhere;
 }
 
+.known-picker {
+  position: relative;
+  margin-top: 12px;
+}
+
+.known-picker .worth-label { margin-bottom: 6px; }
+
+.known-menu {
+  left: 0;
+  width: 100%;
+}
+
+.known-menu .house-option {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.known-menu .house-option.is-rarity {
+  color: var(--chip);
+}
+
+.known-menu .house-option.is-rarity::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--chip);
+}
+
+.known-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.known-price {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
 #form,
 .list { scroll-margin-top: 128px; }
 
@@ -500,7 +543,19 @@ legend {
 
 .item-card .field { margin-top: 0; }
 
-.item-card .field:first-child { grid-column: 1 / -1; }
+.item-card .item-name,
+.item-card .item-price { grid-column: 1 / -1; }
+
+.item-name {
+  margin: 0;
+  font-weight: 650;
+}
+
+.item-card input:disabled,
+.item-card select:disabled {
+  opacity: 0.72;
+  cursor: default;
+}
 
 .item-card select {
   width: 100%;
