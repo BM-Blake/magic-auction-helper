@@ -330,6 +330,46 @@ legend {
 
 .detail-cat .detail-list { margin-top: 8px; }
 
+.detail-items {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-items-title {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.item-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.item-card .field { margin-top: 0; }
+
+.item-card .field:first-child { grid-column: 1 / -1; }
+
+.item-card select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--raise);
+  color: inherit;
+  font-size: 16px;
+}
+
 .detail-list,
 .step-children {
   display: grid;

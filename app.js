@@ -21,8 +21,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=43"),
-      fetch("data/treasures.json?v=43")
+      fetch("data/auction.json?v=44"),
+      fetch("data/treasures.json?v=44")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -55,6 +55,7 @@ function bindStaticEvents() {
   $("#types").addEventListener("click", onSummaryClick);
   $("#sizes").addEventListener("click", onSummaryClick);
   $("#detail-list").addEventListener("click", onDetailClick);
+  $("#detail").addEventListener("change", onItemEdit);
 }
 
 function emptyGroup() {
@@ -1012,6 +1013,117 @@ function renderDetail() {
     }
     list.appendChild(row);
   });
+  if (!unknown && items.length) appendItemEditors(list, items);
+}
+
+function appendItemEditors(list, items) {
+  const block = document.createElement("li");
+  block.className = "detail-items";
+  const title = document.createElement("p");
+  title.className = "detail-items-title";
+  title.textContent = "Items";
+  block.appendChild(title);
+  const priced = items.filter((item) => item.price != null);
+  const unpriced = items.filter((item) => item.price == null);
+  priced.concat(unpriced).forEach((item) => block.appendChild(itemCard(item)));
+  list.appendChild(block);
+}
+
+function itemCard(item) {
+  const card = document.createElement("div");
+  card.className = "item-card";
+  card.dataset.item = item.id;
+  if (item.rarity) {
+    const rarity = state.data.rarities.find((entry) => entry.id === item.rarity);
+    if (rarity) card.style.borderColor = rarity.color;
+  }
+  card.append(itemPriceField(item), itemFactSelect(item, "rarity"), itemFactSelect(item, "type"), itemFactSelect(item, "size"));
+  return card;
+}
+
+function itemPriceField(item) {
+  const label = document.createElement("label");
+  label.className = "field";
+  const name = document.createElement("span");
+  name.textContent = "Exact price";
+  const input = document.createElement("input");
+  input.dataset.itemField = "price";
+  input.inputMode = "text";
+  input.autocomplete = "off";
+  input.enterKeyHint = "done";
+  input.placeholder = "120k or 1.2m";
+  input.value = item.price == null ? "" : String(item.price);
+  input.setAttribute("aria-label", "Exact price");
+  label.append(name, input);
+  return label;
+}
+
+function itemFactSelect(item, field) {
+  const label = document.createElement("label");
+  label.className = "field";
+  const name = document.createElement("span");
+  name.textContent = field === "rarity" ? "Rarity" : field === "type" ? "Type" : "Size";
+  const select = document.createElement("select");
+  select.dataset.itemField = field;
+  select.setAttribute("aria-label", name.textContent);
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "Unknown";
+  select.appendChild(blank);
+  if (field === "rarity") {
+    state.data.rarities.forEach((entry) => {
+      const option = document.createElement("option");
+      option.value = entry.id;
+      option.textContent = entry.name;
+      select.appendChild(option);
+    });
+    select.value = item.rarity || "";
+  } else if (field === "type") {
+    state.data.types.forEach((entry) => {
+      const option = document.createElement("option");
+      option.value = entry.id;
+      option.textContent = entry.name;
+      select.appendChild(option);
+    });
+    select.value = item.type || "";
+  } else {
+    state.data.sizePresets.forEach((size) => {
+      const option = document.createElement("option");
+      option.value = String(size);
+      option.textContent = sizeLabel(size);
+      select.appendChild(option);
+    });
+    select.value = item.size == null ? "" : String(item.size);
+  }
+  label.append(name, select);
+  return label;
+}
+
+function onItemEdit(event) {
+  const card = event.target.closest("[data-item]");
+  if (!card || !state.board) return;
+  const item = state.board.items.find((entry) => entry.id === card.dataset.item);
+  if (!item) return;
+  const field = event.target.dataset.itemField;
+  if (field === "price") {
+    const raw = event.target.value.trim();
+    if (!raw) item.price = null;
+    else {
+      const price = parseCoins(raw);
+      if (Number.isNaN(price)) {
+        event.target.setCustomValidity("Enter a price like 120000, 120k, or 1.2m.");
+        event.target.reportValidity();
+        return;
+      }
+      event.target.setCustomValidity("");
+      item.price = price;
+    }
+  } else if (field === "rarity") item.rarity = event.target.value;
+  else if (field === "type") item.type = event.target.value;
+  else if (field === "size") item.size = event.target.value ? Number(event.target.value) : null;
+  else return;
+  persist();
+  render();
 }
 
 function rowsFor(kind, parent, hideUnknown) {
@@ -1385,5 +1497,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=43").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=44").catch(() => {});
 }
