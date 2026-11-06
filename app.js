@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=67"),
-      fetch("data/treasures.json?v=67")
+      fetch("data/auction.json?v=88"),
+      fetch("data/treasures.json?v=88")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -215,7 +215,7 @@ function buildGroupElement(group, index) {
   })), "Type"));
   entry.appendChild(choiceField("Size", "size", "add-sizes", group, state.data.sizePresets.map((size) => ({
     id: String(size),
-    label: sizeLabel(size)
+    label: String(size)
   })), "Size"));
   return entry;
 }
@@ -276,7 +276,7 @@ function categoryValue(group, kind) {
     if (type) return { label: type.name, color: "", ink: "" };
   }
   if (kind === "size" && group.size) {
-    return { label: sizeLabel(Number(group.size)), color: "", ink: "" };
+    return { label: sizeLabel(group.size, group.type), color: "", ink: "" };
   }
   return { label: "", color: "", ink: "" };
 }
@@ -587,7 +587,7 @@ function onAdd(event) {
       count,
       rarity: group.rarity || "",
       type: group.type || "",
-      size: group.size ? Number(group.size) : null,
+      size: group.size || null,
       prices: prices.prices,
       use
     };
@@ -810,7 +810,7 @@ function increaseChild(facts, field, id) {
     .sort((left, right) => detailSpecificity(left) - detailSpecificity(right));
   if (!open.length) return false;
   writeDetailFact(open[0], field, id);
-  if (field === "types" && id === "collection") open[0].size = collectionTiles();
+  if (field === "types" && id === "collection") open[0].size = collectionShape();
   return true;
 }
 
@@ -1092,13 +1092,13 @@ function parentFacts(selected) {
   if (!selected) return {};
   if (selected.kind === "rarities") return { rarity: selected.id === "unknown" ? "" : selected.id };
   if (selected.kind === "types") return { type: selected.id === "unknown" ? "" : selected.id };
-  return { size: selected.id === "unknown" ? null : Number(selected.id) };
+  return { size: selected.id === "unknown" ? null : selected.id };
 }
 
 function writeDetailFact(facts, field, id) {
   if (field === "rarities") facts.rarity = id === "unknown" ? "" : id;
   else if (field === "types") facts.type = id === "unknown" ? "" : id;
-  else facts.size = id === "unknown" ? null : Number(id);
+  else facts.size = id === "unknown" ? null : id;
 }
 
 function itemMatches(item, facts) {
@@ -1109,7 +1109,7 @@ function itemMatches(item, facts) {
     if (facts.type ? item.type !== facts.type : Boolean(item.type)) return false;
   }
   if (Object.prototype.hasOwnProperty.call(facts, "size")) {
-    if (facts.size != null ? item.size !== facts.size : item.size != null) return false;
+    if (facts.size != null ? sizeKey(item.size) !== sizeKey(facts.size) : item.size != null) return false;
   }
   return true;
 }
@@ -1237,7 +1237,32 @@ function itemCard(item) {
     itemFactSelect(item, "type", Boolean(treasure)),
     itemFactSelect(item, "size", Boolean(treasure))
   );
+  const choices = treasure ? [] : matchingTreasures(item);
+  if (choices.length > 1 && choices.length <= 6) card.appendChild(itemNameField(item, choices));
   return card;
+}
+
+function itemNameField(item, choices) {
+  const label = document.createElement("label");
+  label.className = "field";
+  const name = document.createElement("span");
+  name.textContent = "Name";
+  const select = document.createElement("select");
+  select.dataset.itemField = "name";
+  select.setAttribute("aria-label", "Name");
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "Unknown";
+  select.appendChild(blank);
+  choices.forEach((treasure) => {
+    const option = document.createElement("option");
+    option.value = treasure.name;
+    option.textContent = treasure.name;
+    select.appendChild(option);
+  });
+  select.value = choices.some((treasure) => treasure.name === item.catalogName) ? item.catalogName : "";
+  label.append(name, select);
+  return label;
 }
 
 function itemPriceField(item, locked) {
@@ -1290,15 +1315,15 @@ function itemFactSelect(item, field, locked) {
     select.value = item.type || "";
   } else {
     state.data.sizePresets.forEach((size) => {
-      if (String(size) !== String(item.size) && !catalogSupports(choiceFacts(item, "size", size))) return;
+      if (sizeKey(size) !== sizeKey(item.size) && !catalogSupports(choiceFacts(item, "size", size))) return;
       const option = document.createElement("option");
       option.value = String(size);
-      option.textContent = sizeLabel(size);
+      option.textContent = String(size);
       select.appendChild(option);
     });
-    select.value = item.size == null ? "" : String(item.size);
+    select.value = item.size == null ? "" : sizeKey(item.size);
     if (item.type === "collection") {
-      select.value = String(collectionTiles());
+      select.value = collectionShape();
       select.disabled = true;
     }
   }
@@ -1329,10 +1354,21 @@ function onItemEdit(event) {
   } else if (field === "rarity") item.rarity = event.target.value;
   else if (field === "type") {
     item.type = event.target.value;
-    if (item.type === "collection") item.size = collectionTiles();
+    if (item.type === "collection") item.size = collectionShape();
   } else if (field === "size") {
     if (item.type === "collection") return;
-    item.size = event.target.value ? Number(event.target.value) : null;
+    item.size = event.target.value || null;
+    if (item.catalogName && !matchingTreasures(item).some((treasure) => treasure.name === item.catalogName)) delete item.catalogName;
+  } else if (field === "name") {
+    const chosen = state.data.treasures.find((treasure) => treasure.name === event.target.value);
+    if (!chosen) delete item.catalogName;
+    else {
+      item.catalogName = chosen.name;
+      if (!item.rarity && chosen.rarity) item.rarity = chosen.rarity;
+      if (!item.type && chosen.type) item.type = chosen.type;
+      if (item.size == null) item.size = treasureShape(chosen) || sizeKey(chosen.size);
+      if (item.price == null) item.price = Number(chosen.price);
+    }
   } else return;
   persist();
   render();
@@ -1434,7 +1470,7 @@ function matchingItems() {
     if (state.selected.id === "unknown") return attributeMissing(item, state.selected.kind);
     if (state.selected.kind === "rarities") return item.rarity === state.selected.id;
     if (state.selected.kind === "types") return item.type === state.selected.id;
-    return item.size != null && String(item.size) === state.selected.id;
+    return item.size != null && sizeKey(item.size) === state.selected.id;
   });
 }
 
@@ -1442,38 +1478,51 @@ function selectionLabel(selected) {
   if (selected.id === "unknown") return "Unknown";
   if (selected.kind === "rarities") return rarityName(selected.id);
   if (selected.kind === "types") return typeName(selected.id);
-  return `${selected.id} tiles`;
+  return sizeLabel(selected.id);
 }
 
 function itemSummary(item) {
   const parts = [];
   if (item.rarity) parts.push(rarityName(item.rarity));
   if (item.type) parts.push(typeName(item.type));
-  if (item.size != null) parts.push(sizeLabel(item.size));
+  if (item.size != null) parts.push(sizeLabel(item.size, item.type));
   return parts.join(" · ") || "Unknown rarity";
 }
 
-function sizeShape(size) {
+function sizeCells(size) {
+  if (size == null || size === "") return null;
+  const shape = String(size).match(/^(\d+)x(\d+)$/i);
+  if (shape) return Number(shape[1]) * Number(shape[2]);
   const tiles = Number(size);
-  if (!Number.isInteger(tiles) || tiles < 1) return [1, 1];
-  for (let columns = Math.floor(Math.sqrt(tiles)); columns >= 1; columns -= 1) {
-    if (tiles % columns === 0) return [columns, tiles / columns];
-  }
-  return [1, tiles];
+  return Number.isInteger(tiles) && tiles > 0 ? tiles : null;
 }
 
-function sizeLabel(size) {
-  const [columns, rows] = sizeShape(size);
-  return `${columns}x${rows}`;
+function sizeKey(size) {
+  if (size == null || size === "") return "";
+  const text = String(size);
+  if (/^\d+x\d+$/i.test(text)) return text.toLowerCase();
+  const cells = sizeCells(size);
+  const presets = (state.data && state.data.sizePresets) || [];
+  const match = presets.find((preset) => sizeCells(preset) === cells);
+  return match ? String(match) : text;
+}
+
+function sizeLabel(size, type) {
+  if ((type === "collection" || type === "figurine") && sizeCells(size) === collectionTiles()) return collectionShape();
+  return sizeKey(size);
 }
 
 function collectionTiles() {
   return 6;
 }
 
+function collectionShape() {
+  return "2x3";
+}
+
 function lockCollectionGroup(group) {
   if (group.type !== "collection") return;
-  group.size = String(collectionTiles());
+  group.size = collectionShape();
   if (group.open === "size") group.open = "";
 }
 
@@ -1498,7 +1547,8 @@ function tally(items, data) {
   items.forEach((item) => {
     if (item.rarity && Object.prototype.hasOwnProperty.call(rarities, item.rarity)) rarities[item.rarity] += 1;
     if (item.type && Object.prototype.hasOwnProperty.call(types, item.type)) types[item.type] += 1;
-    if (item.size != null && Object.prototype.hasOwnProperty.call(sizes, String(item.size))) sizes[String(item.size)] += 1;
+    const key = sizeKey(item.size);
+    if (key && Object.prototype.hasOwnProperty.call(sizes, key)) sizes[key] += 1;
   });
   return { rarities, types, sizes };
 }
@@ -1597,7 +1647,7 @@ function openRooms(board, data) {
   return {
     rarities: roomFor(board, data.rarities.map((entry) => entry.id).filter((id) => id !== "unknown"), "rarities", (item) => item.rarity || ""),
     types: roomFor(board, data.types.map((entry) => entry.id), "types", (item) => item.type || ""),
-    sizes: roomFor(board, data.sizePresets.map(String), "sizes", (item) => item.size == null ? "" : String(item.size))
+    sizes: roomFor(board, data.sizePresets.map(String), "sizes", (item) => item.size == null ? "" : sizeKey(item.size))
   };
 }
 
@@ -1627,28 +1677,36 @@ function fits(item, slot, rooms) {
   if (!matchesFacts(item, slot)) return false;
   if (!slot.rarity && rooms.rarities && !(rooms.rarities[item.rarity] > 0)) return false;
   if (!slot.type && rooms.types && !(rooms.types[item.type] > 0)) return false;
-  if (slot.size == null && rooms.sizes && !(rooms.sizes[String(item.size)] > 0)) return false;
+  if (slot.size == null && !catalogSizeRoomOpen(rooms, item)) return false;
   return true;
 }
 
 function matchesFacts(item, slot) {
   if (slot.rarity && item.rarity !== slot.rarity) return false;
   if (slot.type && !typeMatches(item.type, slot.type)) return false;
-  if (slot.size != null && item.size !== slot.size) return false;
+  if (slot.size != null && !treasureMatchesSize(item, slot.size)) return false;
   return true;
 }
 
-function exactTreasure(item) {
+function matchingTreasures(item) {
   const treasures = state.data && state.data.treasures;
-  if (!item || !Array.isArray(treasures) || !treasures.length) return null;
-  if (item.price == null && !item.rarity && !item.type && item.size == null) return null;
-  const matches = treasures.filter((treasure) => {
+  if (!item || !Array.isArray(treasures) || !treasures.length) return [];
+  if (item.price == null && !item.rarity && !item.type && item.size == null) return [];
+  return treasures.filter((treasure) => {
     if (item.price != null && Number(treasure.price) !== Number(item.price)) return false;
     if (item.rarity && treasure.rarity !== item.rarity) return false;
     if (item.type && !typeMatches(treasure.type, item.type)) return false;
-    if (item.size != null && Number(treasure.size) !== Number(item.size)) return false;
+    if (item.size != null && !treasureMatchesSize(treasure, item.size)) return false;
     return true;
-  });
+  }).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function exactTreasure(item) {
+  const matches = matchingTreasures(item);
+  if (item && item.catalogName) {
+    const chosen = matches.find((treasure) => treasure.name === item.catalogName);
+    if (chosen) return chosen;
+  }
   return matches.length === 1 ? matches[0] : null;
 }
 
@@ -1676,8 +1734,12 @@ function resolveExactItems() {
       item.type = treasure.type;
       changed = true;
     }
-    if (item.size == null && treasure.size != null) {
-      item.size = Number(treasure.size);
+    if (item.size == null && (treasure.shape || treasure.size != null)) {
+      item.size = treasureShape(treasure) || sizeKey(treasure.size);
+      changed = true;
+    }
+    if (item.price == null && Number.isFinite(Number(treasure.price))) {
+      item.price = Number(treasure.price);
       changed = true;
     }
   });
@@ -1727,7 +1789,7 @@ function catalogSupports(facts) {
   return treasures.some((treasure) => {
     if (facts.rarity && treasure.rarity !== facts.rarity) return false;
     if (facts.type && !typeMatches(treasure.type, facts.type)) return false;
-    if (facts.size != null && Number(treasure.size) !== Number(facts.size)) return false;
+    if (facts.size != null && !treasureMatchesSize(treasure, facts.size)) return false;
     return true;
   });
 }
@@ -1736,11 +1798,11 @@ function choiceFacts(base, kind, id) {
   const facts = {
     rarity: base.rarity || "",
     type: base.type || "",
-    size: base.size == null || base.size === "" ? null : Number(base.size)
+    size: base.size == null || base.size === "" ? null : base.size
   };
   if (kind === "rarity") facts.rarity = id;
   else if (kind === "type") facts.type = id;
-  else facts.size = Number(id);
+  else facts.size = id;
   return facts;
 }
 
@@ -1751,10 +1813,55 @@ function typeMatches(itemType, slotType) {
   return figurine && asked;
 }
 
+function treasureShape(treasure) {
+  const shape = treasure && treasure.shape;
+  return shape && /^\d+x\d+$/i.test(String(shape)) ? String(shape).toLowerCase() : "";
+}
+
+function treasureMatchesSize(treasure, size) {
+  if (size == null || size === "") return true;
+  const wanted = /^\d+x\d+$/i.test(String(size)) ? String(size).toLowerCase() : "";
+  const known = treasureShape(treasure);
+  if (known) return wanted ? known === wanted : sizeCells(known) === sizeCells(size);
+  return Number(treasure.size) === sizeCells(size);
+}
+
+function sizeShapesFor(cells) {
+  return ((state.data && state.data.sizePresets) || []).map(String).filter((preset) => sizeCells(preset) === Number(cells));
+}
+
+function sizeRoomOpen(rooms, cells) {
+  if (!rooms || !rooms.sizes) return true;
+  const shapes = sizeShapesFor(cells);
+  if (!shapes.length) return true;
+  return shapes.some((shape) => rooms.sizes[shape] > 0);
+}
+
+function catalogSizeRoomOpen(rooms, treasure) {
+  const shape = treasureShape(treasure);
+  if (shape) return !rooms || !rooms.sizes || rooms.sizes[shape] > 0;
+  return sizeRoomOpen(rooms, treasure.size);
+}
+
+function spendCatalogSize(rooms, treasure) {
+  const shape = treasureShape(treasure);
+  if (shape) {
+    if (rooms && rooms.sizes && rooms.sizes[shape] !== Infinity && rooms.sizes[shape] > 0) rooms.sizes[shape] -= 1;
+    return;
+  }
+  spendSizeRoom(rooms, treasure.size);
+}
+
+function spendSizeRoom(rooms, cells) {
+  if (!rooms || !rooms.sizes) return;
+  const shape = sizeShapesFor(cells).find((preset) => rooms.sizes[preset] !== Infinity && rooms.sizes[preset] > 0);
+  if (shape) rooms.sizes[shape] -= 1;
+}
+
 function spend(item, slot, rooms) {
   if (!slot.rarity && rooms.rarities && rooms.rarities[item.rarity] !== Infinity) rooms.rarities[item.rarity] -= 1;
   if (!slot.type && rooms.types && rooms.types[item.type] !== Infinity) rooms.types[item.type] -= 1;
-  if (slot.size == null && rooms.sizes && rooms.sizes[String(item.size)] !== Infinity) rooms.sizes[String(item.size)] -= 1;
+  if (slot.size == null) spendCatalogSize(rooms, item);
 }
 
 function parseCoins(raw) {
@@ -1813,7 +1920,9 @@ function normalizeMaxCounts(raw) {
     if (!source || typeof source !== "object") return;
     Object.keys(source).forEach((id) => {
       const value = Number(source[id]);
-      if (Number.isInteger(value) && value >= 0) result[kind][id] = value;
+      if (!Number.isInteger(value) || value < 0) return;
+      const key = kind === "sizes" ? sizeKey(id) : id;
+      if (key) result[kind][key] = value;
     });
   });
   return result;
@@ -1857,5 +1966,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=67").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=88").catch(() => {});
 }
