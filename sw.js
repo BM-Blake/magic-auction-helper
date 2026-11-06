@@ -1,11 +1,11 @@
-const CACHE = "magic-auction-v42";
+const CACHE = "magic-auction-v43";
 
 const ASSETS = [
   "./index.html",
-  "./styles.css?v=42",
-  "./app.js?v=42",
-  "./data/auction.json?v=42",
-  "./data/treasures.json?v=42",
+  "./styles.css?v=43",
+  "./app.js?v=43",
+  "./data/auction.json?v=43",
+  "./data/treasures.json?v=43",
   "./manifest.webmanifest",
   "./icon.svg"
 ];

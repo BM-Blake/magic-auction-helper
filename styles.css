@@ -300,6 +300,36 @@ legend {
 
 .detail h3 { margin: 0 0 8px; font-size: 1rem; }
 
+.detail-cats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detail-cat.is-open { grid-column: 1 / -1; }
+
+.detail-cat-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+}
+
+.detail-cat.is-open > .detail-cat-btn { border-color: var(--gold); }
+
+.detail-cat .detail-list { margin-top: 8px; }
+
 .detail-list,
 .step-children {
   display: grid;

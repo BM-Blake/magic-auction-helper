@@ -21,8 +21,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=42"),
-      fetch("data/treasures.json?v=42")
+      fetch("data/auction.json?v=43"),
+      fetch("data/treasures.json?v=43")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -585,9 +585,9 @@ function onDetailClick(event) {
     adjustDetail(adjust);
     return;
   }
-  const opener = event.target.closest("[data-open-row]");
+  const opener = event.target.closest("[data-open-field]");
   if (!opener) return;
-  state.detailOpen = state.detailOpen === opener.dataset.openRow ? null : opener.dataset.openRow;
+  state.detailOpen = state.detailOpen === opener.dataset.openField ? null : opener.dataset.openField;
   render();
 }
 
@@ -879,12 +879,20 @@ function chipAdjust(delta, kind, id, disabled) {
 
 function detailLevels(selected) {
   if (!selected) return [];
-  if (selected.id === "unknown" && selected.kind === "rarities") return ["rarities", "types"];
-  if (selected.id === "unknown" && selected.kind === "types") return ["types", "sizes"];
-  if (selected.id === "unknown" && selected.kind === "sizes") return ["sizes"];
-  if (selected.kind === "rarities") return ["types", "sizes"];
-  if (selected.kind === "types") return ["rarities", "sizes"];
-  return ["rarities", "types"];
+  const order = ["rarities", "types", "sizes"];
+  const rest = order.filter((field) => field !== selected.kind);
+  if (selected.id === "unknown") return [selected.kind].concat(rest);
+  return rest;
+}
+
+function fieldLabel(field) {
+  if (field === "rarities") return "Rarity";
+  if (field === "types") return "Type";
+  return "Size";
+}
+
+function filledCount(parent, field) {
+  return state.board.items.filter((item) => itemMatches(item, parent) && !childUnset(item, field)).length;
 }
 
 function canAssign(facts, field, id) {
@@ -967,18 +975,42 @@ function renderDetail() {
   box.hidden = false;
   const label = selectionLabel(state.selected);
   $("#detail-title").textContent = max == null ? label : `${label} · ${items.length} of ${max}`;
-  $("#detail-empty").hidden = items.length > 0;
+  $("#detail-empty").hidden = items.length > 0 || unknownOpen;
   const list = $("#detail-list");
+  list.className = "detail-cats";
   list.replaceChildren();
   if (!items.length && !unknownOpen) return;
   const levels = detailLevels(state.selected);
   const parent = parentFacts(state.selected);
-  const rows = rowsFor(levels[0], parent, unknown && levels[0] === state.selected.kind);
-  rows.forEach((choice) => {
-    const facts = Object.assign({}, parent);
-    writeDetailFact(facts, levels[0], choice.id);
-    const open = state.detailOpen === `${levels[0]}:${choice.id}`;
-    list.appendChild(stepRow(choice, levels[0], facts, open, levels[1]));
+  levels.forEach((field) => {
+    const ownUnknown = unknown && field === state.selected.kind;
+    const filled = ownUnknown ? items.length : filledCount(parent, field);
+    const open = state.detailOpen === field;
+    const row = document.createElement("li");
+    row.className = open ? "detail-cat is-open" : "detail-cat";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "detail-cat-btn";
+    button.dataset.openField = field;
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    const name = document.createElement("span");
+    name.textContent = fieldLabel(field);
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = items.length ? `${filled} of ${items.length}` : String(filled);
+    button.append(name, count);
+    row.appendChild(button);
+    if (open) {
+      const choices = document.createElement("ul");
+      choices.className = "detail-list";
+      rowsFor(field, parent, ownUnknown).forEach((choice) => {
+        const facts = Object.assign({}, parent);
+        writeDetailFact(facts, field, choice.id);
+        choices.appendChild(stepRow(choice, field, facts));
+      });
+      row.appendChild(choices);
+    }
+    list.appendChild(row);
   });
 }
 
@@ -996,40 +1028,14 @@ function rowsFor(kind, parent, hideUnknown) {
   return rows;
 }
 
-function stepRow(choice, field, facts, open, childField) {
+function stepRow(choice, field, facts) {
   const row = document.createElement("li");
-  row.className = open ? "step-row is-open" : "step-row";
-  const label = document.createElement("button");
-  label.type = "button";
-  label.className = "step-label";
-  label.dataset.openRow = `${field}:${choice.id}`;
+  row.className = "step-row";
+  const label = document.createElement("span");
+  label.className = "step-label is-static";
   label.textContent = choice.label;
-  label.setAttribute("aria-expanded", open ? "true" : "false");
   if (choice.color) label.style.color = choice.color;
   row.append(label, stepper(choice.count, field, choice.id, null, null, canAssign(facts, field, choice.id)));
-  if (!open || !childField) return row;
-  const nested = document.createElement("ul");
-  nested.className = "step-children";
-  const childRows = levelChoices(childField).map((child) => {
-    const childFacts = Object.assign({}, facts);
-    writeDetailFact(childFacts, childField, child.id);
-    return Object.assign({}, child, { count: countFacts(childFacts) });
-  });
-  const unknownFacts = Object.assign({}, facts);
-  writeDetailFact(unknownFacts, childField, "unknown");
-  const unknownCount = countFacts(unknownFacts);
-  if (unknownCount > 0) childRows.push({ id: "unknown", label: "Unknown", count: unknownCount });
-  childRows.forEach((child) => {
-    const childRow = document.createElement("li");
-    childRow.className = "step-row";
-    const name = document.createElement("span");
-    name.className = "step-label is-static";
-    name.textContent = child.label;
-    if (child.color) name.style.color = child.color;
-    childRow.append(name, stepper(child.count, field, choice.id, childField, child.id, canAssign(facts, childField, child.id)));
-    nested.appendChild(childRow);
-  });
-  row.appendChild(nested);
   return row;
 }
 
@@ -1379,5 +1385,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=42").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=43").catch(() => {});
 }
