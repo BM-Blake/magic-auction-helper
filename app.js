@@ -21,8 +21,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=37"),
-      fetch("data/treasures.json?v=37")
+      fetch("data/auction.json?v=39"),
+      fetch("data/treasures.json?v=39")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -562,6 +562,11 @@ function parseCount(raw) {
 }
 
 function onSummaryClick(event) {
+  const adjust = event.target.closest("[data-chip-adjust]");
+  if (adjust) {
+    adjustChip(adjust);
+    return;
+  }
   const button = event.target.closest("[data-open]");
   if (!button || !state.board) return;
   const next = { kind: button.dataset.open, id: button.dataset.id };
@@ -598,15 +603,22 @@ function adjustDetail(button) {
   render();
 }
 
+function adjustChip(button) {
+  if (!state.board) return;
+  const kind = button.dataset.field;
+  const id = button.dataset.id;
+  const delta = Number(button.dataset.chipAdjust);
+  const changed = delta > 0 ? increaseChild({}, kind, id) : decreaseChild({}, kind, id);
+  if (!changed) return;
+  persist();
+  render();
+}
+
 function adjustTop(button, delta) {
   const parent = parentFacts(state.selected);
   const field = button.dataset.field;
   const id = button.dataset.id;
-  if (id === "unknown") {
-    const unknown = Object.assign({}, parent);
-    writeDetailFact(unknown, field, "unknown");
-    return adjustGroup(unknown, delta);
-  }
+  if (id === "unknown") return false;
   if (delta > 0) return increaseChild(parent, field, id);
   return decreaseChild(parent, field, id);
 }
@@ -626,11 +638,7 @@ function adjustGroup(facts, delta) {
 }
 
 function adjustChild(facts, field, id, delta) {
-  if (id === "unknown") {
-    const unknown = Object.assign({}, facts);
-    writeDetailFact(unknown, field, "unknown");
-    return adjustGroup(unknown, delta);
-  }
+  if (id === "unknown") return false;
   if (delta > 0) return increaseChild(facts, field, id);
   return decreaseChild(facts, field, id);
 }
@@ -639,13 +647,8 @@ function increaseChild(facts, field, id) {
   const open = state.board.items
     .filter((item) => itemMatches(item, facts) && childUnset(item, field))
     .sort((left, right) => detailSpecificity(left) - detailSpecificity(right));
-  if (open.length) {
-    writeDetailFact(open[0], field, id);
-    return true;
-  }
-  const created = Object.assign({}, facts);
-  writeDetailFact(created, field, id);
-  state.board.items.push(blankItem(created));
+  if (!open.length) return false;
+  writeDetailFact(open[0], field, id);
   return true;
 }
 
@@ -691,19 +694,21 @@ function render() {
     color: entry.color,
     ink: entry.ink
   })));
-  renderUnknown();
+  renderUnknown("rarities");
   renderGroup($("#types"), $("#type-group"), "types", state.data.types.map((entry) => ({
     id: entry.id,
     label: entry.name,
     count: counts.types[entry.id] || 0,
     max: state.board.maxCounts.types[entry.id]
   })));
+  renderUnknown("types");
   renderGroup($("#sizes"), $("#size-group"), "sizes", state.data.sizePresets.map((size) => ({
     id: String(size),
     label: sizeLabel(size),
     count: counts.sizes[String(size)] || 0,
     max: state.board.maxCounts.sizes[String(size)]
   })));
+  renderUnknown("sizes");
   $("#info-empty").hidden = hasBoardInfo();
   renderDetail();
   renderEstimate();
@@ -711,17 +716,17 @@ function render() {
   renderTreasureTotal();
 }
 
-function renderUnknown() {
-  const count = unknownRemainder(state.board);
+function renderUnknown(kind) {
+  const count = unknownCount(state.board, kind);
   if (count <= 0) return;
-  const fieldset = $("#rarity-group");
+  const fieldset = $(unknownFieldset(kind));
   fieldset.hidden = false;
-  const selected = isUnknownSelection(state.selected);
+  const selected = isUnknownSelection(state.selected) && state.selected.kind === kind;
   const chip = document.createElement("button");
   chip.type = "button";
   chip.className = "chip is-on";
   chip.classList.toggle("is-selected", selected);
-  chip.dataset.open = "rarities";
+  chip.dataset.open = kind;
   chip.dataset.id = "unknown";
   chip.setAttribute("aria-pressed", selected ? "true" : "false");
   chip.style.setProperty("--chip", "#3a4154");
@@ -732,14 +737,36 @@ function renderUnknown() {
   number.className = "count";
   number.textContent = String(count);
   chip.append(name, number);
-  $("#rarities").appendChild(chip);
+  $(unknownContainer(kind)).appendChild(chip);
+}
+
+function unknownFieldset(kind) {
+  if (kind === "types") return "#type-group";
+  if (kind === "sizes") return "#size-group";
+  return "#rarity-group";
+}
+
+function unknownContainer(kind) {
+  if (kind === "types") return "#types";
+  if (kind === "sizes") return "#sizes";
+  return "#rarities";
+}
+
+function unknownCount(board, kind) {
+  if (!board) return 0;
+  const missing = board.items.filter((item) => attributeMissing(item, kind)).length;
+  if (board.treasureTotal == null) return missing;
+  return missing + Math.max(0, board.treasureTotal - board.items.length);
+}
+
+function attributeMissing(item, kind) {
+  if (kind === "rarities") return !item.rarity;
+  if (kind === "types") return !item.type;
+  return item.size == null;
 }
 
 function unknownRemainder(board) {
-  if (!board) return 0;
-  const unrated = board.items.filter((item) => !item.rarity).length;
-  if (board.treasureTotal == null) return unrated;
-  return unrated + Math.max(0, board.treasureTotal - board.items.length);
+  return unknownCount(board, "rarities");
 }
 
 function resolveUnknown() {
@@ -818,21 +845,52 @@ function renderGroup(container, fieldset, kind, entries) {
     count.className = "count";
     count.textContent = quantityLabel(entry.count, entry.max, kind);
     button.append(name, count);
-    container.appendChild(button);
+    const wrap = document.createElement("div");
+    wrap.className = "chip-wrap";
+    wrap.append(
+      chipAdjust("-1", kind, entry.id, entry.count < 1),
+      button,
+      chipAdjust("1", kind, entry.id, !canAssign({}, kind, entry.id))
+    );
+    container.appendChild(wrap);
   });
 }
 
-function detailLevels(kind) {
-  if (kind === "rarities") return ["types", "sizes"];
-  if (kind === "types") return ["rarities", "sizes"];
+function chipAdjust(delta, kind, id, disabled) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "step-btn chip-adjust";
+  button.dataset.chipAdjust = delta;
+  button.dataset.field = kind;
+  button.dataset.id = id;
+  button.disabled = disabled;
+  button.textContent = delta === "1" ? "+" : "−";
+  button.setAttribute("aria-label", delta === "1" ? "Increase" : "Decrease");
+  return button;
+}
+
+function detailLevels(selected) {
+  if (!selected) return [];
+  if (selected.id === "unknown" && selected.kind === "rarities") return ["rarities", "types"];
+  if (selected.id === "unknown" && selected.kind === "types") return ["types", "sizes"];
+  if (selected.id === "unknown" && selected.kind === "sizes") return ["sizes"];
+  if (selected.kind === "rarities") return ["types", "sizes"];
+  if (selected.kind === "types") return ["rarities", "sizes"];
   return ["rarities", "types"];
+}
+
+function canAssign(facts, field, id) {
+  if (id === "unknown") return false;
+  const pool = Object.assign({}, facts);
+  writeDetailFact(pool, field, "unknown");
+  return countFacts(pool) > 0;
 }
 
 function parentFacts(selected) {
   if (!selected) return {};
   if (selected.kind === "rarities") return { rarity: selected.id === "unknown" ? "" : selected.id };
-  if (selected.kind === "types") return { type: selected.id };
-  return { size: Number(selected.id) };
+  if (selected.kind === "types") return { type: selected.id === "unknown" ? "" : selected.id };
+  return { size: selected.id === "unknown" ? null : Number(selected.id) };
 }
 
 function writeDetailFact(facts, field, id) {
@@ -890,22 +948,24 @@ function renderDetail() {
   const items = matchingItems();
   const unknown = isUnknownSelection(state.selected);
   const max = unknown ? null : categoryMax(state.selected);
-  if (!state.selected || (!items.length && max == null && !(unknown && unknownRemainder(state.board) > 0))) {
+  const unknownOpen = unknown && unknownCount(state.board, state.selected.kind) > 0;
+  if (!state.selected || (!items.length && max == null && !unknownOpen)) {
     box.hidden = true;
     $("#detail-list").replaceChildren();
     $("#detail-empty").hidden = true;
     return;
   }
+  $(unknownFieldset(state.selected.kind)).appendChild(box);
   box.hidden = false;
   const label = selectionLabel(state.selected);
   $("#detail-title").textContent = max == null ? label : `${label} · ${items.length} of ${max}`;
   $("#detail-empty").hidden = items.length > 0;
   const list = $("#detail-list");
   list.replaceChildren();
-  if (!items.length) return;
-  const levels = detailLevels(state.selected.kind);
+  if (!items.length && !unknownOpen) return;
+  const levels = detailLevels(state.selected);
   const parent = parentFacts(state.selected);
-  const rows = rowsFor(levels[0], parent);
+  const rows = rowsFor(levels[0], parent, unknown && levels[0] === state.selected.kind);
   rows.forEach((choice) => {
     const facts = Object.assign({}, parent);
     writeDetailFact(facts, levels[0], choice.id);
@@ -914,16 +974,17 @@ function renderDetail() {
   });
 }
 
-function rowsFor(kind, parent) {
+function rowsFor(kind, parent, hideUnknown) {
   const rows = levelChoices(kind).map((choice) => {
     const facts = Object.assign({}, parent);
     writeDetailFact(facts, kind, choice.id);
     return Object.assign({}, choice, { count: countFacts(facts) });
   });
+  if (hideUnknown) return rows;
   const unknownFacts = Object.assign({}, parent);
   writeDetailFact(unknownFacts, kind, "unknown");
-  const unknownCount = countFacts(unknownFacts);
-  if (unknownCount > 0) rows.push({ id: "unknown", label: "Unknown", count: unknownCount });
+  const missing = countFacts(unknownFacts);
+  if (missing > 0) rows.push({ id: "unknown", label: "Unknown", count: missing });
   return rows;
 }
 
@@ -937,7 +998,7 @@ function stepRow(choice, field, facts, open, childField) {
   label.textContent = choice.label;
   label.setAttribute("aria-expanded", open ? "true" : "false");
   if (choice.color) label.style.color = choice.color;
-  row.append(label, stepper(choice.count, field, choice.id));
+  row.append(label, stepper(choice.count, field, choice.id, null, null, canAssign(facts, field, choice.id)));
   if (!open || !childField) return row;
   const nested = document.createElement("ul");
   nested.className = "step-children";
@@ -957,16 +1018,17 @@ function stepRow(choice, field, facts, open, childField) {
     name.className = "step-label is-static";
     name.textContent = child.label;
     if (child.color) name.style.color = child.color;
-    childRow.append(name, stepper(child.count, field, choice.id, childField, child.id));
+    childRow.append(name, stepper(child.count, field, choice.id, childField, child.id, canAssign(facts, childField, child.id)));
     nested.appendChild(childRow);
   });
   row.appendChild(nested);
   return row;
 }
 
-function stepper(count, field, id, childField, childId) {
+function stepper(count, field, id, childField, childId, canIncrease) {
   const box = document.createElement("div");
   box.className = "stepper";
+  const targetId = childField ? childId : id;
   const down = document.createElement("button");
   down.type = "button";
   down.className = "step-btn";
@@ -978,7 +1040,7 @@ function stepper(count, field, id, childField, childId) {
     down.dataset.childId = childId;
   }
   down.textContent = "−";
-  down.disabled = count < 1;
+  down.disabled = targetId === "unknown" || count < 1;
   down.setAttribute("aria-label", "Decrease");
   const number = document.createElement("span");
   number.className = "step-count";
@@ -994,6 +1056,7 @@ function stepper(count, field, id, childField, childId) {
     up.dataset.childId = childId;
   }
   up.textContent = "+";
+  up.disabled = targetId === "unknown" || !canIncrease;
   up.setAttribute("aria-label", "Increase");
   box.append(down, number, up);
   return box;
@@ -1015,30 +1078,29 @@ function renderExact() {
 }
 
 function isUnknownSelection(selected) {
-  return Boolean(selected && selected.kind === "rarities" && selected.id === "unknown");
+  return Boolean(selected && selected.id === "unknown");
 }
 
 function selectionStillOpen() {
   if (!state.selected) return false;
   if (matchingItems().length) return true;
-  if (isUnknownSelection(state.selected)) return unknownRemainder(state.board) > 0;
+  if (isUnknownSelection(state.selected)) return unknownCount(state.board, state.selected.kind) > 0;
   return categoryMax(state.selected) != null;
 }
 
 function matchingItems() {
   if (!state.selected) return [];
   return state.board.items.filter((item) => {
-    if (state.selected.kind === "rarities") {
-      if (state.selected.id === "unknown") return !item.rarity;
-      return item.rarity === state.selected.id;
-    }
+    if (state.selected.id === "unknown") return attributeMissing(item, state.selected.kind);
+    if (state.selected.kind === "rarities") return item.rarity === state.selected.id;
     if (state.selected.kind === "types") return item.type === state.selected.id;
     return item.size != null && String(item.size) === state.selected.id;
   });
 }
 
 function selectionLabel(selected) {
-  if (selected.kind === "rarities") return selected.id === "unknown" ? "Unknown" : rarityName(selected.id);
+  if (selected.id === "unknown") return "Unknown";
+  if (selected.kind === "rarities") return rarityName(selected.id);
   if (selected.kind === "types") return typeName(selected.id);
   return `${selected.id} tiles`;
 }
@@ -1309,5 +1371,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=37").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=39").catch(() => {});
 }

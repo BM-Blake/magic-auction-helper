@@ -218,10 +218,31 @@ legend {
 
 .counter { display: flex; align-items: center; gap: 4px; }
 
-#rarities .chip,
+#rarities > .chip,
+#rarities > .chip-wrap,
 .add-rarities .chip {
   flex: 1 1 calc(33.33% - 8px);
   max-width: calc(33.33% - 8px);
+}
+
+.chip-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.chip-wrap .chip {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.chip-adjust {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  font-size: 1rem;
 }
 
 .add-rarities .chip,
@@ -263,7 +284,7 @@ legend {
   outline-offset: 2px;
 }
 
-.detail { margin: 4px 0 16px; }
+.detail { margin: 10px 0 0; }
 
 .detail h3 { margin: 0 0 8px; font-size: 1rem; }
 
