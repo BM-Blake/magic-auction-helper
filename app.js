@@ -21,8 +21,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=39"),
-      fetch("data/treasures.json?v=39")
+      fetch("data/auction.json?v=42"),
+      fetch("data/treasures.json?v=42")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -270,6 +270,9 @@ function choiceChip(kind, id, label, color, ink) {
   button.textContent = label;
   button.setAttribute("aria-pressed", "false");
   if (color) {
+    button.classList.add("is-swatch");
+    button.textContent = "";
+    button.setAttribute("aria-label", label);
     button.style.setProperty("--chip", color);
     button.style.setProperty("--chip-ink", ink);
   }
@@ -838,13 +841,18 @@ function renderGroup(container, fieldset, kind, entries) {
     if (entry.color) {
       button.style.setProperty("--chip", entry.color);
       button.style.setProperty("--chip-ink", entry.ink);
+      button.classList.add("is-swatch");
+      button.setAttribute("aria-label", `${entry.label}, ${quantityLabel(entry.count, entry.max, kind)}`);
     }
-    const name = document.createElement("span");
-    name.textContent = entry.label;
     const count = document.createElement("span");
     count.className = "count";
     count.textContent = quantityLabel(entry.count, entry.max, kind);
-    button.append(name, count);
+    if (!entry.color) {
+      const name = document.createElement("span");
+      name.textContent = entry.label;
+      button.append(name);
+    }
+    button.append(count);
     const wrap = document.createElement("div");
     wrap.className = "chip-wrap";
     wrap.append(
@@ -1371,5 +1379,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=39").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=42").catch(() => {});
 }
