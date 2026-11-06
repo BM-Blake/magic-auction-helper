@@ -71,6 +71,24 @@ button { cursor: pointer; }
   text-align: center;
 }
 
+.menu-picks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.pick-title {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-align: left;
+  text-transform: uppercase;
+}
+
 .house-picker {
   position: relative;
   width: 100%;
@@ -80,17 +98,24 @@ button { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
   min-height: 52px;
-  padding: 0 16px 0 18px;
+  padding: 0 12px 0 14px;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--raise);
   color: var(--text);
-  font-size: 1.2rem;
+  font-size: 1rem;
   font-weight: 650;
   box-shadow: var(--shadow);
+}
+
+.house-toggle > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .house-toggle::after {
@@ -115,10 +140,10 @@ button { cursor: pointer; }
 
 .house-menu {
   position: absolute;
-  z-index: 3;
+  z-index: 4;
   top: calc(100% + 8px);
   left: 0;
-  right: 0;
+  width: calc(200% + 12px);
   margin: 0;
   padding: 6px;
   list-style: none;
@@ -126,6 +151,13 @@ button { cursor: pointer; }
   border-radius: 16px;
   background: #161922;
   box-shadow: var(--shadow);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+#house-menu {
+  left: auto;
+  right: 0;
 }
 
 .house-option {

@@ -6,7 +6,8 @@ const state = {
   board: null,
   selected: null,
   detailOpen: null,
-  groups: [emptyGroup()]
+  groups: [emptyGroup()],
+  johnsonIntroUsed: false
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -21,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=50"),
-      fetch("data/treasures.json?v=50")
+      fetch("data/auction.json?v=56"),
+      fetch("data/treasures.json?v=56")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -43,11 +44,14 @@ async function init() {
 }
 
 function bindStaticEvents() {
-  $("#house").addEventListener("change", onHouseChange);
-  $("#house-toggle").addEventListener("click", onHouseToggle);
-  $("#house-menu").addEventListener("click", onHousePick);
-  document.addEventListener("click", onHouseDismiss);
-  document.addEventListener("keydown", onHouseKey);
+  document.querySelectorAll("[data-picker]").forEach((picker) => {
+    const kind = picker.dataset.picker;
+    picker.querySelector("select").addEventListener("change", () => onPickerChange(kind));
+    picker.querySelector(".house-toggle").addEventListener("click", () => onPickerToggle(kind));
+    picker.querySelector(".house-menu").addEventListener("click", (event) => onPickerPick(kind, event));
+  });
+  document.addEventListener("click", onPickerDismiss);
+  document.addEventListener("keydown", onPickerKey);
   $("#end-game").addEventListener("click", endGame);
   $("#game-start").addEventListener("click", showGame);
   $("#fab").addEventListener("click", () => setSheet($("#sheet").hidden));
@@ -64,7 +68,7 @@ function bindStaticEvents() {
 }
 
 function showMenu() {
-  setHouseMenu(false);
+  closePickers();
   $("#scene-menu").hidden = false;
   $("#scene-tracker").hidden = true;
   $("#fab").hidden = true;
@@ -73,7 +77,7 @@ function showMenu() {
 }
 
 function showGame() {
-  setHouseMenu(false);
+  closePickers();
   $("#scene-menu").hidden = true;
   $("#scene-tracker").hidden = false;
   $("#fab").hidden = false;
@@ -81,22 +85,50 @@ function showGame() {
 }
 
 function emptyGroup() {
-  return { rarity: "", type: "", size: "", count: "1", price: "", use: "known", open: "" };
+  return { rarity: "", type: "", size: "", count: "", price: "", use: "known", open: "" };
+}
+
+function johnsonGroup(rarity) {
+  return { rarity, type: "", size: "", count: "", price: "", use: "both", open: "" };
+}
+
+function johnsonPreset() {
+  return [johnsonGroup("gray"), johnsonGroup("green"), johnsonGroup("blue")];
+}
+
+function groupSignature(group) {
+  return [group.rarity, group.type, group.size, group.count, group.price, group.use, group.open].join("\0");
+}
+
+function sameGroups(left, right) {
+  return left.length === right.length && left.every((group, index) => groupSignature(group) === groupSignature(right[index]));
+}
+
+function applyJohnsonIntro() {
+  if (!state.board || state.board.hero !== "johnson" || state.johnsonIntroUsed) return;
+  state.groups = johnsonPreset();
+  state.johnsonIntroUsed = true;
+  renderGroups();
 }
 
 function buildHouseOptions() {
-  const house = $("#house");
-  state.data.houses.forEach((entry) => {
+  state.board.house = fillSelect($("#house"), state.data.houses, state.board.house);
+  state.board.hero = fillSelect($("#hero"), state.data.heroes, state.board.hero);
+  renderPicker("house");
+  renderPicker("hero");
+}
+
+function fillSelect(select, entries, current) {
+  entries.forEach((entry) => {
     const option = document.createElement("option");
     option.value = entry.id;
     option.textContent = entry.name;
-    house.appendChild(option);
+    select.appendChild(option);
   });
-  if (!state.data.houses.some((entry) => entry.id === state.board.house)) {
-    state.board.house = state.data.houses[0].id;
-  }
-  house.value = state.board.house;
-  renderHousePicker();
+  const known = entries.some((entry) => entry.id === current);
+  const value = known ? current : entries[0].id;
+  select.value = value;
+  return value;
 }
 
 function renderGroups() {
@@ -303,23 +335,38 @@ function choiceChip(kind, id, label, color, ink) {
   return button;
 }
 
-function onHouseChange() {
-  if (!state.board) return;
-  state.board.house = $("#house").value;
-  persist();
-  render();
-  renderHousePicker();
+const pickers = {
+  hero: { select: "#hero", menu: "#hero-menu", current: "#hero-current", toggle: "#hero-toggle", root: "#hero-picker" },
+  house: { select: "#house", menu: "#house-menu", current: "#house-current", toggle: "#house-toggle", root: "#house-picker" }
+};
+
+function pickerEntries(kind) {
+  return kind === "hero" ? state.data.heroes : state.data.houses;
 }
 
-function renderHousePicker() {
-  const menu = $("#house-menu");
-  const current = $("#house-current");
+function onPickerChange(kind) {
+  if (!state.board) return;
+  state.board[kind] = $(pickers[kind].select).value;
+  persist();
+  render();
+  renderPicker(kind);
+  if (kind === "hero" && state.board.hero !== "johnson" && sameGroups(state.groups, johnsonPreset())) {
+    state.groups = [emptyGroup()];
+    renderGroups();
+  }
+}
+
+function renderPicker(kind) {
+  const picker = pickers[kind];
+  const menu = $(picker.menu);
+  const current = $(picker.current);
   if (!menu || !current || !state.data) return;
-  const selected = $("#house").value;
-  const house = state.data.houses.find((entry) => entry.id === selected);
-  current.textContent = house ? house.name : "";
+  const selected = $(picker.select).value;
+  const entries = pickerEntries(kind);
+  const chosen = entries.find((entry) => entry.id === selected);
+  current.textContent = chosen ? chosen.name : "";
   menu.replaceChildren();
-  state.data.houses.forEach((entry) => {
+  entries.forEach((entry) => {
     const item = document.createElement("li");
     item.className = "house-option";
     item.setAttribute("role", "option");
@@ -330,36 +377,44 @@ function renderHousePicker() {
   });
 }
 
-function setHouseMenu(open) {
-  const menu = $("#house-menu");
-  const toggle = $("#house-toggle");
+function setPickerOpen(kind, open) {
+  const picker = pickers[kind];
+  const menu = $(picker.menu);
+  const toggle = $(picker.toggle);
   if (!menu || !toggle) return;
   menu.hidden = !open;
   toggle.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
-function onHouseToggle() {
-  setHouseMenu($("#house-menu").hidden);
+function closePickers() {
+  Object.keys(pickers).forEach((kind) => setPickerOpen(kind, false));
 }
 
-function onHousePick(event) {
+function onPickerToggle(kind) {
+  const opening = $(pickers[kind].menu).hidden;
+  closePickers();
+  if (opening) setPickerOpen(kind, true);
+}
+
+function onPickerPick(kind, event) {
   const option = event.target.closest("[data-value]");
   if (!option) return;
-  $("#house").value = option.dataset.value;
-  $("#house").dispatchEvent(new Event("change"));
-  setHouseMenu(false);
+  $(pickers[kind].select).value = option.dataset.value;
+  $(pickers[kind].select).dispatchEvent(new Event("change"));
+  setPickerOpen(kind, false);
 }
 
-function onHouseDismiss(event) {
-  if (event.target.closest("#house-picker")) return;
-  setHouseMenu(false);
+function onPickerDismiss(event) {
+  if (event.target.closest("[data-picker]")) return;
+  closePickers();
 }
 
-function onHouseKey(event) {
-  if (event.key === "Escape") setHouseMenu(false);
+function onPickerKey(event) {
+  if (event.key === "Escape") closePickers();
 }
 
 function setSheet(open) {
+  if (open) applyJohnsonIntro();
   $("#sheet").hidden = !open;
   $("#fab").textContent = open ? "×" : "+";
   $("#fab").setAttribute("aria-label", open ? "Close add form" : "Add information");
@@ -753,6 +808,7 @@ function endGame() {
   state.board.maxCounts = emptyMaxCounts();
   state.selected = null;
   state.detailOpen = null;
+  state.johnsonIntroUsed = false;
   resetComposer();
   setSheet(false);
   persist();
@@ -1060,8 +1116,7 @@ function renderDetail() {
   const levels = detailLevels(state.selected);
   const parent = parentFacts(state.selected);
   levels.forEach((field) => {
-    const ownUnknown = unknown && field === state.selected.kind;
-    const filled = ownUnknown ? items.length : filledCount(parent, field);
+    const filled = filledCount(parent, field);
     const open = state.detailOpen === field;
     const row = document.createElement("li");
     row.className = open ? "detail-cat is-open" : "detail-cat";
@@ -1080,7 +1135,7 @@ function renderDetail() {
     if (open) {
       const choices = document.createElement("ul");
       choices.className = "detail-list";
-      rowsFor(field, parent, ownUnknown).forEach((choice) => {
+      rowsFor(field, parent, unknown && field === state.selected.kind).forEach((choice) => {
         const facts = Object.assign({}, parent);
         writeDetailFact(facts, field, choice.id);
         choices.appendChild(stepRow(choice, field, facts));
@@ -1504,7 +1559,7 @@ function zeroSizes(presets) {
 }
 
 function loadBoard() {
-  const blank = { house: state.data.houses[0].id, items: [], treasureTotal: null, maxCounts: emptyMaxCounts() };
+  const blank = { house: state.data.houses[0].id, hero: state.data.heroes[0].id, items: [], treasureTotal: null, maxCounts: emptyMaxCounts() };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     if (!saved || typeof saved !== "object") return blank;
@@ -1512,6 +1567,7 @@ function loadBoard() {
     const total = Number(saved.treasureTotal);
     return {
       house: typeof saved.house === "string" ? saved.house : blank.house,
+      hero: typeof saved.hero === "string" ? saved.hero : blank.hero,
       items,
       treasureTotal: Number.isInteger(total) && total >= 0 ? total : null,
       maxCounts: normalizeMaxCounts(saved.maxCounts)
@@ -1573,5 +1629,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=50").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=56").catch(() => {});
 }

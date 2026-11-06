@@ -11,7 +11,7 @@
     <title>Magic Auction Helper</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=50">
+    <link rel="stylesheet" href="styles.css?v=56">
   </head>
   <body>
     <div class="app">
@@ -19,13 +19,27 @@
 
       <section id="scene-menu" class="scene scene-menu" aria-label="Main menu">
         <h1 class="app-title">Magic Auction Helper</h1>
-        <div class="house-picker" id="house-picker">
-          <span id="house-label" class="visually-hidden">Auction house</span>
-          <select id="house" class="visually-hidden" tabindex="-1" aria-hidden="true"></select>
-          <button type="button" id="house-toggle" class="house-toggle" aria-haspopup="listbox" aria-expanded="false" aria-controls="house-menu" aria-labelledby="house-label house-current">
-            <span id="house-current"></span>
-          </button>
-          <ul id="house-menu" class="house-menu" role="listbox" aria-labelledby="house-label" hidden></ul>
+        <div class="menu-picks">
+          <div class="pick">
+            <p class="pick-title" id="hero-label">Hero</p>
+            <div class="house-picker" id="hero-picker" data-picker="hero">
+              <select id="hero" class="visually-hidden" tabindex="-1" aria-hidden="true"></select>
+              <button type="button" id="hero-toggle" class="house-toggle" aria-haspopup="listbox" aria-expanded="false" aria-controls="hero-menu" aria-labelledby="hero-label hero-current">
+                <span id="hero-current"></span>
+              </button>
+              <ul id="hero-menu" class="house-menu" role="listbox" aria-labelledby="hero-label" hidden></ul>
+            </div>
+          </div>
+          <div class="pick">
+            <p class="pick-title" id="house-label">Auction house</p>
+            <div class="house-picker" id="house-picker" data-picker="house">
+              <select id="house" class="visually-hidden" tabindex="-1" aria-hidden="true"></select>
+              <button type="button" id="house-toggle" class="house-toggle" aria-haspopup="listbox" aria-expanded="false" aria-controls="house-menu" aria-labelledby="house-label house-current">
+                <span id="house-current"></span>
+              </button>
+              <ul id="house-menu" class="house-menu" role="listbox" aria-labelledby="house-label" hidden></ul>
+            </div>
+          </div>
         </div>
         <button type="button" id="game-start" class="menu-btn">Game Start</button>
       </section>
@@ -99,6 +113,6 @@
       <p id="form-error" class="form-error" role="alert" hidden></p>
       <button type="submit" class="primary">Add</button>
     </form>
-    <script src="app.js?v=50"></script>
+    <script src="app.js?v=56"></script>
   </body>
 </html>

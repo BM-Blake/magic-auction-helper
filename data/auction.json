@@ -13,6 +13,26 @@
     { "id": "world", "name": "World", "minPrice": 15000, "maxPrice": 2500000 },
     { "id": "cosmic", "name": "Cosmic", "minPrice": 50000, "maxPrice": 5000000 }
   ],
+  "heroes": [
+    { "id": "alice", "name": "Alice" },
+    { "id": "alucard", "name": "Alucard" },
+    { "id": "angela", "name": "Angela" },
+    { "id": "aurora", "name": "Aurora" },
+    { "id": "brody", "name": "Brody" },
+    { "id": "chou", "name": "Chou" },
+    { "id": "gusion", "name": "Gusion" },
+    { "id": "harley", "name": "Harley" },
+    { "id": "johnson", "name": "Johnson" },
+    { "id": "kalea", "name": "Kalea" },
+    { "id": "lancelot", "name": "Lancelot" },
+    { "id": "layla", "name": "Layla" },
+    { "id": "lunox", "name": "Lunox" },
+    { "id": "lylia", "name": "Lylia" },
+    { "id": "nana", "name": "Nana" },
+    { "id": "vale", "name": "Vale" },
+    { "id": "wanwan", "name": "Wanwan" },
+    { "id": "yu-zhong", "name": "Yu Zhong" }
+  ],
   "rarities": [
     { "id": "gray", "name": "Gray", "color": "#c5ccd6", "ink": "#1b1e26" },
     { "id": "green", "name": "Green", "color": "#5dce86", "ink": "#102216" },
