@@ -21,8 +21,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=44"),
-      fetch("data/treasures.json?v=44")
+      fetch("data/auction.json?v=50"),
+      fetch("data/treasures.json?v=50")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -30,7 +30,7 @@ async function init() {
   } catch (error) {
     $("#load-error").hidden = false;
     $("#load-error").textContent = "Could not load the auction data. The tracker needs data/auction.json and data/treasures.json beside this page.";
-    $("#info-heading").closest("section").hidden = true;
+    $("#scene-menu").hidden = true;
     $("#fab").hidden = true;
     return;
   }
@@ -44,7 +44,12 @@ async function init() {
 
 function bindStaticEvents() {
   $("#house").addEventListener("change", onHouseChange);
+  $("#house-toggle").addEventListener("click", onHouseToggle);
+  $("#house-menu").addEventListener("click", onHousePick);
+  document.addEventListener("click", onHouseDismiss);
+  document.addEventListener("keydown", onHouseKey);
   $("#end-game").addEventListener("click", endGame);
+  $("#game-start").addEventListener("click", showGame);
   $("#fab").addEventListener("click", () => setSheet($("#sheet").hidden));
   $("#close-sheet").addEventListener("click", () => setSheet(false));
   $("#sheet").addEventListener("submit", onAdd);
@@ -56,6 +61,23 @@ function bindStaticEvents() {
   $("#sizes").addEventListener("click", onSummaryClick);
   $("#detail-list").addEventListener("click", onDetailClick);
   $("#detail").addEventListener("change", onItemEdit);
+}
+
+function showMenu() {
+  setHouseMenu(false);
+  $("#scene-menu").hidden = false;
+  $("#scene-tracker").hidden = true;
+  $("#fab").hidden = true;
+  setSheet(false);
+  window.scrollTo(0, 0);
+}
+
+function showGame() {
+  setHouseMenu(false);
+  $("#scene-menu").hidden = true;
+  $("#scene-tracker").hidden = false;
+  $("#fab").hidden = false;
+  window.scrollTo(0, 0);
 }
 
 function emptyGroup() {
@@ -74,6 +96,7 @@ function buildHouseOptions() {
     state.board.house = state.data.houses[0].id;
   }
   house.value = state.board.house;
+  renderHousePicker();
 }
 
 function renderGroups() {
@@ -285,6 +308,55 @@ function onHouseChange() {
   state.board.house = $("#house").value;
   persist();
   render();
+  renderHousePicker();
+}
+
+function renderHousePicker() {
+  const menu = $("#house-menu");
+  const current = $("#house-current");
+  if (!menu || !current || !state.data) return;
+  const selected = $("#house").value;
+  const house = state.data.houses.find((entry) => entry.id === selected);
+  current.textContent = house ? house.name : "";
+  menu.replaceChildren();
+  state.data.houses.forEach((entry) => {
+    const item = document.createElement("li");
+    item.className = "house-option";
+    item.setAttribute("role", "option");
+    item.dataset.value = entry.id;
+    item.setAttribute("aria-selected", entry.id === selected ? "true" : "false");
+    item.textContent = entry.name;
+    menu.appendChild(item);
+  });
+}
+
+function setHouseMenu(open) {
+  const menu = $("#house-menu");
+  const toggle = $("#house-toggle");
+  if (!menu || !toggle) return;
+  menu.hidden = !open;
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function onHouseToggle() {
+  setHouseMenu($("#house-menu").hidden);
+}
+
+function onHousePick(event) {
+  const option = event.target.closest("[data-value]");
+  if (!option) return;
+  $("#house").value = option.dataset.value;
+  $("#house").dispatchEvent(new Event("change"));
+  setHouseMenu(false);
+}
+
+function onHouseDismiss(event) {
+  if (event.target.closest("#house-picker")) return;
+  setHouseMenu(false);
+}
+
+function onHouseKey(event) {
+  if (event.key === "Escape") setHouseMenu(false);
 }
 
 function setSheet(open) {
@@ -685,10 +757,14 @@ function endGame() {
   setSheet(false);
   persist();
   render();
+  showMenu();
 }
 
 function render() {
   if (resolveUnknown()) persist();
+  const house = state.data.houses.find((entry) => entry.id === state.board.house);
+  const houseName = $("#house-name");
+  if (houseName) houseName.textContent = house ? house.name : "";
   const counts = tally(state.board.items, state.data);
   renderGroup($("#rarities"), $("#rarity-group"), "rarities", state.data.rarities.map((entry) => ({
     id: entry.id,
@@ -1497,5 +1573,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=44").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=50").catch(() => {});
 }

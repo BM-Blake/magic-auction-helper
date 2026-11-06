@@ -38,7 +38,19 @@ button { cursor: pointer; }
   padding: calc(16px + var(--safe-top)) 16px calc(96px + var(--safe-bottom));
 }
 
-.top {
+.scene[hidden] { display: none !important; }
+
+.scene-menu {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 18px;
+  min-height: calc(100vh - 32px - var(--safe-top) - var(--safe-bottom));
+}
+
+.scene-tracker #game-bar {
   position: sticky;
   top: 0;
   z-index: 2;
@@ -47,31 +59,130 @@ button { cursor: pointer; }
   background: var(--bg);
 }
 
+.app-title {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 650;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.house-picker {
+  position: relative;
+  width: 100%;
+}
+
+.house-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--raise);
+  color: var(--text);
+  font-size: 1.2rem;
+  font-weight: 650;
+  box-shadow: var(--shadow);
+}
+
+.house-toggle::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-right: 2px solid var(--gold);
+  border-bottom: 2px solid var(--gold);
+  transform: rotate(45deg);
+}
+
+.house-toggle[aria-expanded="true"] {
+  border-color: var(--gold);
+}
+
+.house-toggle[aria-expanded="true"]::after {
+  margin-top: 4px;
+  transform: rotate(225deg);
+}
+
+.house-menu {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #161922;
+  box-shadow: var(--shadow);
+}
+
+.house-option {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.house-option[aria-selected="true"] {
+  background: var(--gold);
+  color: var(--gold-ink);
+}
+
+.house-option:hover,
+.house-option:focus-visible {
+  background: var(--raise-2);
+}
+
+.house-option[aria-selected="true"]:hover,
+.house-option[aria-selected="true"]:focus-visible {
+  background: var(--gold);
+  filter: brightness(1.06);
+}
+
+.house-name {
+  margin: 0;
+  min-width: 0;
+  font-size: 1.35rem;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.menu-btn {
+  width: 100%;
+  min-height: 56px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--gold);
+  color: var(--gold-ink);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.menu-btn:hover { filter: brightness(1.05); }
+
 .title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
-}
-
-.house-label { min-width: 0; }
-
-.house {
-  max-width: 100%;
-  border: 0;
-  padding: 0 22px 0 0;
-  background-color: transparent;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--gold) 50%),
-    linear-gradient(135deg, var(--gold) 50%, transparent 50%);
-  background-position: calc(100% - 10px) 55%, calc(100% - 4px) 55%;
-  background-size: 6px 6px, 6px 6px;
-  background-repeat: no-repeat;
-  font-size: 1.7rem;
-  font-weight: 650;
-  line-height: 1.1;
-  appearance: none;
 }
 
 .ghost {

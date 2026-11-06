@@ -11,16 +11,29 @@
     <title>Magic Auction Helper</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=44">
+    <link rel="stylesheet" href="styles.css?v=50">
   </head>
   <body>
     <div class="app">
-      <header class="top">
+      <p id="load-error" class="card error" hidden></p>
+
+      <section id="scene-menu" class="scene scene-menu" aria-label="Main menu">
+        <h1 class="app-title">Magic Auction Helper</h1>
+        <div class="house-picker" id="house-picker">
+          <span id="house-label" class="visually-hidden">Auction house</span>
+          <select id="house" class="visually-hidden" tabindex="-1" aria-hidden="true"></select>
+          <button type="button" id="house-toggle" class="house-toggle" aria-haspopup="listbox" aria-expanded="false" aria-controls="house-menu" aria-labelledby="house-label house-current">
+            <span id="house-current"></span>
+          </button>
+          <ul id="house-menu" class="house-menu" role="listbox" aria-labelledby="house-label" hidden></ul>
+        </div>
+        <button type="button" id="game-start" class="menu-btn">Game Start</button>
+      </section>
+
+      <section id="scene-tracker" class="scene scene-tracker" hidden>
+      <div id="game-bar">
         <div class="title-row">
-          <label class="house-label">
-            <span class="visually-hidden">Auction house</span>
-            <select id="house" class="house"></select>
-          </label>
+          <p id="house-name" class="house-name"></p>
           <button type="button" id="end-game" class="ghost">End game</button>
         </div>
         <p id="network" class="status" hidden></p>
@@ -28,10 +41,9 @@
           <p class="worth-label">Estimate worth</p>
           <p id="worth-range" class="worth-range">0</p>
         </section>
-      </header>
+      </div>
 
-      <main>
-        <p id="load-error" class="card error" hidden></p>
+      <main id="game-main">
 
         <section class="card" aria-labelledby="info-heading">
           <h2 id="info-heading">Available information</h2>
@@ -70,9 +82,10 @@
           </div>
         </section>
       </main>
+      </section>
     </div>
 
-    <button type="button" id="fab" class="fab" aria-label="Add information">+</button>
+    <button type="button" id="fab" class="fab" aria-label="Add information" hidden>+</button>
     <form id="sheet" class="sheet" hidden>
       <div class="sheet-top">
         <div class="form-head">
@@ -86,6 +99,6 @@
       <p id="form-error" class="form-error" role="alert" hidden></p>
       <button type="submit" class="primary">Add</button>
     </form>
-    <script src="app.js?v=44"></script>
+    <script src="app.js?v=50"></script>
   </body>
 </html>
