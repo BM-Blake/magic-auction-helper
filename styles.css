@@ -54,8 +54,8 @@ button { cursor: pointer; }
   position: sticky;
   top: 0;
   z-index: 2;
-  margin: 0 -16px;
-  padding: 0 16px 10px;
+  margin: calc(-16px - var(--safe-top)) -16px 0;
+  padding: calc(16px + var(--safe-top)) 16px 16px;
   background: var(--bg);
 }
 
@@ -264,7 +264,7 @@ h2 { margin: 0 0 14px; font-weight: 650; font-size: 1rem; }
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: rgba(26, 30, 40, 0.92);
+  background: var(--raise);
   box-shadow: var(--shadow);
 }
 
