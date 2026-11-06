@@ -20,9 +20,7 @@ Open the page once while online. A service worker then saves the page and its da
 
 ## Data
 
-House ranges and the rarity, type, and size lists live in `data/auction.json`. Catalog prices live in `data/treasures.json`.
-
-Those prices come from [bybyKD/magic-chess-gogo-auction](https://github.com/bybyKD/magic-chess-gogo-auction), which is MIT licensed. Common treasures are stored there as white and shown here as gray.
+House ranges and the rarity, type, and size lists live in `data/auction.json`. Catalog names, prices, and shapes live in `data/treasures.json`, recorded from the live Treasure Collection.
 
 The estimate uses each catalog treasure at most once. A house range is the usual price band, and a revealed treasure can be worth more or less than that band.
 
