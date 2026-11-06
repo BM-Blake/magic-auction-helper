@@ -581,7 +581,8 @@ legend {
   line-height: 1;
 }
 
-.step-btn:disabled { opacity: 0.35; }
+.chip:disabled,
+.step-btn:disabled { opacity: 0.35; cursor: default; }
 
 .step-count {
   min-width: 1.5em;
@@ -748,6 +749,15 @@ select.group-use {
 }
 
 .cat-btn:hover { background: var(--raise-2); }
+
+.cat-btn:disabled,
+.detail-cat-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.cat-btn:disabled:hover,
+.detail-cat-btn:disabled:hover { background: transparent; }
 
 .cat-btn[aria-pressed="true"] { border-color: var(--gold); }
 

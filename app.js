@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=56"),
-      fetch("data/treasures.json?v=56")
+      fetch("data/auction.json?v=60"),
+      fetch("data/treasures.json?v=60")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -161,6 +161,9 @@ function buildGroupElement(group, index) {
   countInput.enterKeyHint = "done";
   countInput.value = group.count;
   countInput.setAttribute("aria-label", `Count for group ${index + 1}`);
+  countInput.addEventListener("wheel", (event) => {
+    event.preventDefault();
+  }, { passive: false });
   countLabel.append(countName, countInput);
   head.appendChild(countLabel);
 
@@ -211,7 +214,7 @@ function buildGroupElement(group, index) {
   entry.appendChild(choiceField("Size", "size", "add-sizes", group, state.data.sizePresets.map((size) => ({
     id: String(size),
     label: sizeLabel(size)
-  })), "Size in tiles"));
+  })), "Size"));
   return entry;
 }
 
@@ -254,7 +257,9 @@ function paintCategoryButton(button, group) {
     button.style.removeProperty("--chip");
     button.style.removeProperty("--chip-ink");
   }
-  const open = group.open === kind;
+  const locked = kind === "size" && group.type === "collection";
+  button.disabled = locked;
+  const open = group.open === kind && !locked;
   button.setAttribute("aria-pressed", open ? "true" : "false");
   button.setAttribute("aria-expanded", open ? "true" : "false");
 }
@@ -310,7 +315,9 @@ function choiceField(legendText, kind, extraClass, group, options, ariaLabel) {
   chips.setAttribute("aria-label", ariaLabel);
   options.forEach((option) => {
     const button = choiceChip(kind, option.id, option.label, option.color, option.ink);
-    button.setAttribute("aria-pressed", group[kind] === option.id ? "true" : "false");
+    const selected = group[kind] === option.id;
+    button.setAttribute("aria-pressed", selected ? "true" : "false");
+    button.disabled = !selected && !catalogSupports(choiceFacts(group, kind, option.id));
     chips.appendChild(button);
   });
   fieldset.append(legend, chips);
@@ -448,6 +455,7 @@ function onSheetClick(event) {
     const group = state.groups[Number(entry.dataset.group)];
     if (!group) return;
     const kind = category.dataset.openCat;
+    if (kind === "size" && group.type === "collection") return;
     group.open = group.open === kind ? "" : kind;
     syncCategoryPanels(entry, group);
     hideError();
@@ -462,6 +470,7 @@ function onSheetClick(event) {
   if (!group) return;
   const kind = button.dataset.pick;
   group[kind] = group[kind] === button.dataset.id ? "" : button.dataset.id;
+  if (kind === "type") lockCollectionGroup(group);
   syncGroupChips(entry, group);
   hideError();
 }
@@ -486,7 +495,9 @@ function onSheetInput(event) {
 
 function syncGroupChips(entry, group) {
   entry.querySelectorAll("[data-pick]").forEach((button) => {
-    button.setAttribute("aria-pressed", group[button.dataset.pick] === button.dataset.id ? "true" : "false");
+    const selected = group[button.dataset.pick] === button.dataset.id;
+    button.setAttribute("aria-pressed", selected ? "true" : "false");
+    button.disabled = !selected && !catalogSupports(choiceFacts(group, button.dataset.pick, button.dataset.id));
   });
   syncCategoryPanels(entry, group);
 }
@@ -775,11 +786,11 @@ function adjustChild(facts, field, id, delta) {
 }
 
 function increaseChild(facts, field, id) {
-  const open = state.board.items
-    .filter((item) => itemMatches(item, facts) && childUnset(item, field))
+  const open = openDonors(facts, field, id)
     .sort((left, right) => detailSpecificity(left) - detailSpecificity(right));
   if (!open.length) return false;
   writeDetailFact(open[0], field, id);
+  if (field === "types" && id === "collection") open[0].size = collectionTiles();
   return true;
 }
 
@@ -787,7 +798,7 @@ function decreaseChild(facts, field, id) {
   const specific = Object.assign({}, facts);
   writeDetailFact(specific, field, id);
   const match = state.board.items
-    .filter((item) => itemMatches(item, specific))
+    .filter((item) => itemMatches(item, specific) && (field !== "sizes" || item.type !== "collection"))
     .sort((left, right) => detailSpecificity(left) - detailSpecificity(right))[0];
   if (!match) return false;
   writeDetailFact(match, field, "unknown");
@@ -989,7 +1000,7 @@ function renderGroup(container, fieldset, kind, entries) {
     const wrap = document.createElement("div");
     wrap.className = "chip-wrap";
     wrap.append(
-      chipAdjust("-1", kind, entry.id, entry.count < 1),
+      chipAdjust("-1", kind, entry.id, !canDecrease({}, kind, entry.id)),
       button,
       chipAdjust("1", kind, entry.id, !canAssign({}, kind, entry.id))
     );
@@ -1028,11 +1039,32 @@ function filledCount(parent, field) {
   return state.board.items.filter((item) => itemMatches(item, parent) && !childUnset(item, field)).length;
 }
 
+function canDecrease(facts, field, id) {
+  if (id === "unknown") return false;
+  const specific = Object.assign({}, facts);
+  writeDetailFact(specific, field, id);
+  return state.board.items.some((item) => itemMatches(item, specific) && (field !== "sizes" || item.type !== "collection"));
+}
+
 function canAssign(facts, field, id) {
   if (id === "unknown") return false;
   const pool = Object.assign({}, facts);
   writeDetailFact(pool, field, "unknown");
-  return countFacts(pool) > 0;
+  return openDonors(pool, field, id).length > 0;
+}
+
+function factKind(field) {
+  if (field === "rarities") return "rarity";
+  if (field === "types") return "type";
+  return "size";
+}
+
+function openDonors(facts, field, id) {
+  return state.board.items.filter((item) => {
+    if (!itemMatches(item, facts) || !childUnset(item, field)) return false;
+    if (field === "sizes" && item.type === "collection") return false;
+    return catalogSupports(choiceFacts(item, factKind(field), id));
+  });
 }
 
 function parentFacts(selected) {
@@ -1116,14 +1148,16 @@ function renderDetail() {
   const levels = detailLevels(state.selected);
   const parent = parentFacts(state.selected);
   levels.forEach((field) => {
+    const sizeLocked = field === "sizes" && parent.type === "collection";
     const filled = filledCount(parent, field);
-    const open = state.detailOpen === field;
+    const open = state.detailOpen === field && !sizeLocked;
     const row = document.createElement("li");
     row.className = open ? "detail-cat is-open" : "detail-cat";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "detail-cat-btn";
     button.dataset.openField = field;
+    button.disabled = sizeLocked;
     button.setAttribute("aria-expanded", open ? "true" : "false");
     const name = document.createElement("span");
     name.textContent = fieldLabel(field);
@@ -1203,6 +1237,7 @@ function itemFactSelect(item, field) {
   select.appendChild(blank);
   if (field === "rarity") {
     state.data.rarities.forEach((entry) => {
+      if (entry.id !== item.rarity && !catalogSupports(choiceFacts(item, "rarity", entry.id))) return;
       const option = document.createElement("option");
       option.value = entry.id;
       option.textContent = entry.name;
@@ -1211,6 +1246,7 @@ function itemFactSelect(item, field) {
     select.value = item.rarity || "";
   } else if (field === "type") {
     state.data.types.forEach((entry) => {
+      if (entry.id !== item.type && !catalogSupports(choiceFacts(item, "type", entry.id))) return;
       const option = document.createElement("option");
       option.value = entry.id;
       option.textContent = entry.name;
@@ -1219,12 +1255,17 @@ function itemFactSelect(item, field) {
     select.value = item.type || "";
   } else {
     state.data.sizePresets.forEach((size) => {
+      if (String(size) !== String(item.size) && !catalogSupports(choiceFacts(item, "size", size))) return;
       const option = document.createElement("option");
       option.value = String(size);
       option.textContent = sizeLabel(size);
       select.appendChild(option);
     });
     select.value = item.size == null ? "" : String(item.size);
+    if (item.type === "collection") {
+      select.value = String(collectionTiles());
+      select.disabled = true;
+    }
   }
   label.append(name, select);
   return label;
@@ -1250,19 +1291,25 @@ function onItemEdit(event) {
       item.price = price;
     }
   } else if (field === "rarity") item.rarity = event.target.value;
-  else if (field === "type") item.type = event.target.value;
-  else if (field === "size") item.size = event.target.value ? Number(event.target.value) : null;
-  else return;
+  else if (field === "type") {
+    item.type = event.target.value;
+    if (item.type === "collection") item.size = collectionTiles();
+  } else if (field === "size") {
+    if (item.type === "collection") return;
+    item.size = event.target.value ? Number(event.target.value) : null;
+  } else return;
   persist();
   render();
 }
 
 function rowsFor(kind, parent, hideUnknown) {
+  const pool = Object.assign({}, parent);
+  writeDetailFact(pool, kind, "unknown");
   const rows = levelChoices(kind).map((choice) => {
     const facts = Object.assign({}, parent);
     writeDetailFact(facts, kind, choice.id);
     return Object.assign({}, choice, { count: countFacts(facts) });
-  });
+  }).filter((choice) => choice.count > 0 || openDonors(pool, kind, choice.id).length > 0);
   if (hideUnknown) return rows;
   const unknownFacts = Object.assign({}, parent);
   writeDetailFact(unknownFacts, kind, "unknown");
@@ -1278,11 +1325,11 @@ function stepRow(choice, field, facts) {
   label.className = "step-label is-static";
   label.textContent = choice.label;
   if (choice.color) label.style.color = choice.color;
-  row.append(label, stepper(choice.count, field, choice.id, null, null, canAssign(facts, field, choice.id)));
+  row.append(label, stepper(choice.count, field, choice.id, null, null, canAssign(facts, field, choice.id), canDecrease(facts, field, choice.id)));
   return row;
 }
 
-function stepper(count, field, id, childField, childId, canIncrease) {
+function stepper(count, field, id, childField, childId, canIncrease, canLower) {
   const box = document.createElement("div");
   box.className = "stepper";
   const targetId = childField ? childId : id;
@@ -1297,7 +1344,7 @@ function stepper(count, field, id, childField, childId, canIncrease) {
     down.dataset.childId = childId;
   }
   down.textContent = "−";
-  down.disabled = targetId === "unknown" || count < 1;
+  down.disabled = canLower === false || count < 1;
   down.setAttribute("aria-label", "Decrease");
   const number = document.createElement("span");
   number.className = "step-count";
@@ -1366,13 +1413,32 @@ function itemSummary(item) {
   const parts = [];
   if (item.rarity) parts.push(rarityName(item.rarity));
   if (item.type) parts.push(typeName(item.type));
-  if (item.size != null) parts.push(`${item.size} tile${item.size === 1 ? "" : "s"}`);
+  if (item.size != null) parts.push(sizeLabel(item.size));
   return parts.join(" · ") || "Unknown rarity";
 }
 
-function sizeLabel(size) {
+function sizeShape(size) {
   const tiles = Number(size);
-  return tiles === 1 ? "1 tile" : `${tiles} tiles`;
+  if (!Number.isInteger(tiles) || tiles < 1) return [1, 1];
+  for (let columns = Math.floor(Math.sqrt(tiles)); columns >= 1; columns -= 1) {
+    if (tiles % columns === 0) return [columns, tiles / columns];
+  }
+  return [1, tiles];
+}
+
+function sizeLabel(size) {
+  const [columns, rows] = sizeShape(size);
+  return `${columns}x${rows}`;
+}
+
+function collectionTiles() {
+  return 6;
+}
+
+function lockCollectionGroup(group) {
+  if (group.type !== "collection") return;
+  group.size = String(collectionTiles());
+  if (group.open === "size") group.open = "";
 }
 
 function quantityLabel(count, max, kind) {
@@ -1516,6 +1582,29 @@ function matchesFacts(item, slot) {
   return true;
 }
 
+function catalogSupports(facts) {
+  const treasures = state.data && state.data.treasures;
+  if (!Array.isArray(treasures) || !treasures.length) return true;
+  return treasures.some((treasure) => {
+    if (facts.rarity && treasure.rarity !== facts.rarity) return false;
+    if (facts.type && !typeMatches(treasure.type, facts.type)) return false;
+    if (facts.size != null && Number(treasure.size) !== Number(facts.size)) return false;
+    return true;
+  });
+}
+
+function choiceFacts(base, kind, id) {
+  const facts = {
+    rarity: base.rarity || "",
+    type: base.type || "",
+    size: base.size == null || base.size === "" ? null : Number(base.size)
+  };
+  if (kind === "rarity") facts.rarity = id;
+  else if (kind === "type") facts.type = id;
+  else facts.size = Number(id);
+  return facts;
+}
+
 function typeMatches(itemType, slotType) {
   if (itemType === slotType) return true;
   const figurine = itemType === "figurine" || itemType === "collection";
@@ -1629,5 +1718,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=56").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=60").catch(() => {});
 }
