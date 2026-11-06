@@ -26,4 +26,4 @@ The estimate uses each catalog treasure at most once. A house range is the usual
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0). See [LICENSE](LICENSE). You may use and change this project for a noncommercial purpose. Selling it, or using it commercially, is not allowed.
