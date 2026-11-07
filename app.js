@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=155"),
-      fetch("data/treasures.json?v=155")
+      fetch("data/auction.json?v=157"),
+      fetch("data/treasures.json?v=157")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -2157,18 +2157,24 @@ function renderEstimate() {
 
 function recommendedBid(board, data) {
   const worth = recommendationWorth(board, data);
-  return worth > 0 ? Math.round(worth * 0.7) : 0;
+  return worth > 0 ? Math.round(worth * 0.9) : 0;
 }
 
 function recommendationWorth(board, data) {
   if (!board) return 0;
   const mins = rarityMinimums(data);
+  const counts = tally(board.items || [], data);
   let priced = 0;
+  let specific = 0;
   const rarityCounts = {};
   let colorless = 0;
   (board.items || []).forEach((item) => {
     if (item.price != null && Number.isFinite(Number(item.price))) {
       priced += Number(item.price);
+      return;
+    }
+    if (hasTypeOrSize(item)) {
+      specific += lowestPossibleWorth(board, data, item, counts);
       return;
     }
     if (item.rarity && item.rarity !== "unknown" && mins[item.rarity] != null) {
@@ -2181,7 +2187,46 @@ function recommendationWorth(board, data) {
     return sum + mins[rarity] * 3 * count;
   }, 0);
   const remaining = colorless + unlistedSlots(board);
-  return priced + rarityWorth + unknownColorWorth(board, data, mins, remaining);
+  return priced + specific + rarityWorth + unknownColorWorth(board, data, mins, remaining);
+}
+
+function hasTypeOrSize(item) {
+  return Boolean(item.type && item.type !== "unknown") || (item.size != null && item.size !== "");
+}
+
+function lowestPossibleWorth(board, data, item, counts) {
+  let lowest = null;
+  ((data && data.treasures) || []).forEach((treasure) => {
+    const price = Number(treasure.price);
+    if (!Number.isFinite(price) || !treasurePossible(board, item, treasure, counts)) return;
+    if (lowest == null || price < lowest) lowest = price;
+  });
+  return lowest == null ? 0 : lowest;
+}
+
+function treasurePossible(board, item, treasure, counts) {
+  const rarity = item.rarity && item.rarity !== "unknown" ? item.rarity : "";
+  const type = item.type && item.type !== "unknown" ? item.type : "";
+  const size = item.size == null || item.size === "" ? "" : sizeKey(item.size);
+  if (rarity) {
+    if (treasure.rarity !== rarity) return false;
+  } else if (categoryClosed(board, counts, "rarities", treasure.rarity)) return false;
+  if (type) {
+    if (!typeMatches(treasure.type, type)) return false;
+  } else if (categoryClosed(board, counts, "types", treasure.type)) return false;
+  const shape = treasureShape(treasure) || (treasure.size == null ? "" : sizeKey(treasure.size));
+  if (size) {
+    if (!treasureMatchesSize(treasure, size)) return false;
+  } else if (shape && categoryClosed(board, counts, "sizes", shape)) return false;
+  return true;
+}
+
+function categoryClosed(board, counts, kind, id) {
+  if (!id || !board) return false;
+  const key = kind === "sizes" ? sizeKey(id) : String(id);
+  const max = board.maxCounts?.[kind]?.[key];
+  if (!Number.isInteger(max)) return false;
+  return (counts[kind]?.[key] || 0) >= max;
 }
 
 function unknownColorWorth(board, data, mins, remaining) {
@@ -2780,5 +2825,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=155").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=157").catch(() => {});
 }
