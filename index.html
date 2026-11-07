@@ -11,7 +11,7 @@
     <title>Magic Auction Helper</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=131">
+    <link rel="stylesheet" href="styles.css?v=133">
   </head>
   <body>
     <div class="app">
@@ -46,7 +46,7 @@
           <p class="support-prompt">Like our app?</p>
           <div class="support-actions">
             <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="magicauctionhelper" data-color="#FFDD00" data-emoji="" data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000" data-font-color="#000000" data-coffee-color="#ffffff"></script>
-            <button type="button" class="support-crypto">Donate with Crypto</button>
+            <button type="button" id="crypto-open" class="support-crypto" aria-haspopup="dialog" aria-controls="crypto-dialog">Donate with Crypto</button>
           </div>
         </div>
       </section>
@@ -133,6 +133,43 @@
       <p id="form-error" class="form-error" role="alert" hidden></p>
       <button type="submit" class="primary">Add</button>
     </form>
-    <script src="app.js?v=131"></script>
+    <dialog id="crypto-dialog" class="crypto-dialog" aria-labelledby="crypto-title">
+      <div class="form-head">
+        <h2 id="crypto-title">Donate with Crypto</h2>
+        <button type="button" id="close-crypto" class="text-btn">Close</button>
+      </div>
+      <p class="hint">Copy an address and send from the matching network.</p>
+      <ul class="crypto-list">
+        <li>
+          <div class="crypto-row">
+            <span class="crypto-chain">Multi-chain</span>
+            <button type="button" class="text-btn crypto-copy" data-copy="0x4cD13d89468Cc85c19C990A48506595Db459b9a7">Copy</button>
+          </div>
+          <code class="crypto-address">0x4cD13d89468Cc85c19C990A48506595Db459b9a7</code>
+        </li>
+        <li>
+          <div class="crypto-row">
+            <span class="crypto-chain">Bitcoin</span>
+            <button type="button" class="text-btn crypto-copy" data-copy="bc1qe8lq6w023t86fg4kva57a8luwnvglnpt7stqve">Copy</button>
+          </div>
+          <code class="crypto-address">bc1qe8lq6w023t86fg4kva57a8luwnvglnpt7stqve</code>
+        </li>
+        <li>
+          <div class="crypto-row">
+            <span class="crypto-chain">Solana</span>
+            <button type="button" class="text-btn crypto-copy" data-copy="BVWZjD2Nvy72tcyRZCuRkTUzhUhKM843ktghBbH4DaVr">Copy</button>
+          </div>
+          <code class="crypto-address">BVWZjD2Nvy72tcyRZCuRkTUzhUhKM843ktghBbH4DaVr</code>
+        </li>
+        <li>
+          <div class="crypto-row">
+            <span class="crypto-chain">Tron</span>
+            <button type="button" class="text-btn crypto-copy" data-copy="TQCrKs7QGdeLT6Cpi92Lnk6mKSSa1vW6EM">Copy</button>
+          </div>
+          <code class="crypto-address">TQCrKs7QGdeLT6Cpi92Lnk6mKSSa1vW6EM</code>
+        </li>
+      </ul>
+    </dialog>
+    <script src="app.js?v=133"></script>
   </body>
 </html>

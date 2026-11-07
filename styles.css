@@ -254,6 +254,67 @@ button { cursor: pointer; }
 
 .support-crypto:hover { filter: brightness(1.05); }
 
+.crypto-dialog {
+  width: min(448px, calc(100% - 32px));
+  margin: auto;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--raise);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.crypto-dialog::backdrop {
+  background: rgba(8, 10, 14, 0.72);
+}
+
+.crypto-dialog .hint {
+  margin: 0;
+  color: var(--muted);
+}
+
+.crypto-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.crypto-list li {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg);
+}
+
+.crypto-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.crypto-chain {
+  font-weight: 700;
+}
+
+.crypto-address {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.crypto-copy {
+  flex: 0 0 auto;
+}
+
 .title-row {
   display: flex;
   align-items: center;

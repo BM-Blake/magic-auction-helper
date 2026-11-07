@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=131"),
-      fetch("data/treasures.json?v=131")
+      fetch("data/auction.json?v=133"),
+      fetch("data/treasures.json?v=133")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -56,6 +56,9 @@ function bindStaticEvents() {
   document.addEventListener("keydown", onPickerKey);
   $("#end-game").addEventListener("click", endGame);
   $("#game-start").addEventListener("click", showGame);
+  $("#crypto-open").addEventListener("click", openCrypto);
+  $("#close-crypto").addEventListener("click", closeCrypto);
+  $("#crypto-dialog").addEventListener("click", onCryptoClick);
   $("#fab").addEventListener("click", () => setSheet($("#sheet").hidden));
   $("#close-sheet").addEventListener("click", () => setSheet(false));
   $("#sheet").addEventListener("submit", onAdd);
@@ -75,6 +78,7 @@ function showMenu() {
   $("#scene-tracker").hidden = true;
   $("#fab").hidden = true;
   setSheet(false);
+  closeCrypto();
   window.scrollTo(0, 0);
 }
 
@@ -83,7 +87,60 @@ function showGame() {
   $("#scene-menu").hidden = true;
   $("#scene-tracker").hidden = false;
   $("#fab").hidden = false;
+  closeCrypto();
   window.scrollTo(0, 0);
+}
+
+function openCrypto() {
+  const dialog = $("#crypto-dialog");
+  if (dialog && !dialog.open) dialog.showModal();
+}
+
+function closeCrypto() {
+  const dialog = $("#crypto-dialog");
+  if (dialog && dialog.open) dialog.close();
+}
+
+function onCryptoClick(event) {
+  if (event.target === event.currentTarget) {
+    closeCrypto();
+    return;
+  }
+  const button = event.target.closest("[data-copy]");
+  if (!button) return;
+  copyWallet(button);
+}
+
+function copyWallet(button) {
+  const text = button.dataset.copy;
+  const mark = () => {
+    document.querySelectorAll(".crypto-copy").forEach((entry) => {
+      entry.textContent = "Copy";
+    });
+    button.textContent = "Copied";
+  };
+  const fallback = () => {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.left = "-999px";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  };
+  const write = navigator.clipboard && navigator.clipboard.writeText
+    ? navigator.clipboard.writeText(text)
+    : Promise.reject();
+  const timed = Promise.race([
+    write,
+    new Promise((resolve, reject) => setTimeout(() => reject(new Error("copy")), 400))
+  ]);
+  timed.then(mark).catch(() => {
+    if (fallback()) mark();
+  });
 }
 
 function emptyGroup() {
@@ -2093,5 +2150,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=131").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=133").catch(() => {});
 }
