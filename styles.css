@@ -301,6 +301,12 @@ button { cursor: pointer; }
   font-weight: 700;
 }
 
+.crypto-nets {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
 .crypto-address {
   display: block;
   margin-top: 8px;
