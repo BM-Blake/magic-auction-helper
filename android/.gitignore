@@ -1,0 +1,12 @@
+/.gradle
+/build
+/local.properties
+/keystore.properties
+*.iml
+.idea
+/captures
+app/build
+app/src/main/assets
+*.jks
+*.keystore
+play-listing/chrome-profile/
