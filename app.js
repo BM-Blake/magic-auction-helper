@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=153"),
-      fetch("data/treasures.json?v=153")
+      fetch("data/auction.json?v=155"),
+      fetch("data/treasures.json?v=155")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -2152,9 +2152,83 @@ function renderEstimate() {
     : min === max
       ? formatCoins(min)
       : `${formatCoins(min)} – ${formatCoins(max)}`;
-  const quote = catalogWorthParts(state.board, state.data, false, true);
-  const basis = quote.known + quote.unknown;
-  $("#recommended-bid").textContent = formatCoins(basis > 0 ? Math.round(basis * 1.5) : 0);
+  $("#recommended-bid").textContent = formatCoins(recommendedBid(state.board, state.data));
+}
+
+function recommendedBid(board, data) {
+  const worth = recommendationWorth(board, data);
+  return worth > 0 ? Math.round(worth * 0.7) : 0;
+}
+
+function recommendationWorth(board, data) {
+  if (!board) return 0;
+  const mins = rarityMinimums(data);
+  let priced = 0;
+  const rarityCounts = {};
+  let colorless = 0;
+  (board.items || []).forEach((item) => {
+    if (item.price != null && Number.isFinite(Number(item.price))) {
+      priced += Number(item.price);
+      return;
+    }
+    if (item.rarity && item.rarity !== "unknown" && mins[item.rarity] != null) {
+      rarityCounts[item.rarity] = (rarityCounts[item.rarity] || 0) + 1;
+      return;
+    }
+    colorless += 1;
+  });
+  const rarityWorth = Object.entries(rarityCounts).reduce((sum, [rarity, count]) => {
+    return sum + mins[rarity] * 3 * count;
+  }, 0);
+  const remaining = colorless + unlistedSlots(board);
+  return priced + rarityWorth + unknownColorWorth(board, data, mins, remaining);
+}
+
+function unknownColorWorth(board, data, mins, remaining) {
+  if (remaining <= 0) return 0;
+  const counts = tally(board.items || [], data);
+  const capped = [];
+  const openMins = [];
+  ((data && data.rarities) || []).forEach((entry) => {
+    const id = entry.id;
+    if (!id || id === "unknown" || mins[id] == null) return;
+    const max = board.maxCounts?.rarities?.[id];
+    if (!Number.isInteger(max)) {
+      openMins.push(mins[id]);
+      return;
+    }
+    const room = max - (counts.rarities?.[id] || 0);
+    if (room > 0) capped.push({ min: mins[id], room });
+  });
+  capped.sort((left, right) => left.min - right.min);
+  let left = remaining;
+  let worth = 0;
+  capped.forEach((entry) => {
+    if (left <= 0) return;
+    const take = Math.min(entry.room, left);
+    worth += entry.min * 3 * take;
+    left -= take;
+  });
+  if (left > 0 && openMins.length) {
+    const average = openMins.reduce((sum, min) => sum + min, 0) / openMins.length;
+    worth += average * 3 * left;
+  }
+  return worth;
+}
+
+function rarityMinimums(data) {
+  const mins = {};
+  ((data && data.treasures) || []).forEach((treasure) => {
+    const price = Number(treasure.price);
+    if (!treasure.rarity || treasure.rarity === "unknown" || !Number.isFinite(price)) return;
+    if (mins[treasure.rarity] == null || price < mins[treasure.rarity]) mins[treasure.rarity] = price;
+  });
+  return mins;
+}
+
+function unlistedSlots(board) {
+  if (!board || !Number.isInteger(board.treasureTotal)) return 0;
+  return Math.max(0, board.treasureTotal - (board.items || []).length);
 }
 
 function renderExact() {
@@ -2706,5 +2780,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=153").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=155").catch(() => {});
 }
