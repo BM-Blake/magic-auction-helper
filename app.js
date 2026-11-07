@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=135"),
-      fetch("data/treasures.json?v=135")
+      fetch("data/auction.json?v=141"),
+      fetch("data/treasures.json?v=141")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -143,12 +143,16 @@ function copyWallet(button) {
   });
 }
 
+function emptyDetail() {
+  return { rarity: "", type: "", size: "", price: "", open: "" };
+}
+
 function emptyGroup() {
-  return { rarity: "", type: "", size: "", count: "", price: "", use: "known", open: "" };
+  return { rarity: "", type: "", size: "", count: "", price: "", use: "known", open: "", details: [] };
 }
 
 function johnsonGroup(rarity) {
-  return { rarity, type: "", size: "", count: "", price: "", use: "both", open: "" };
+  return { rarity, type: "", size: "", count: "", price: "", use: "both", open: "", details: [] };
 }
 
 function johnsonPreset() {
@@ -156,7 +160,8 @@ function johnsonPreset() {
 }
 
 function groupSignature(group) {
-  return [group.rarity, group.type, group.size, group.count, group.price, group.use, group.open].join("\0");
+  const details = (group.details || []).map((detail) => [detail.rarity, detail.type, detail.size, detail.price, detail.open].join("\u0001")).join("\u0002");
+  return [group.rarity, group.type, group.size, group.count, group.price, group.use, group.open, details].join("\0");
 }
 
 function sameGroups(left, right) {
@@ -270,11 +275,385 @@ function buildGroupElement(group, index) {
     id: type.id,
     label: type.name
   })), "Type"));
-  entry.appendChild(choiceField("Size", "size", "add-sizes", group, state.data.sizePresets.map((size) => ({
-    id: String(size),
-    label: String(size)
+  entry.appendChild(choiceField("Size", "size", "add-sizes", group, orderedSizePresets().map((size) => ({
+    id: size,
+    label: size
   })), "Size"));
+  const specify = specifyBlock(group);
+  if (specify) entry.appendChild(specify);
   return entry;
+}
+
+function specifyBlock(group) {
+  const kinds = specifyKinds(group);
+  if (!kinds.length) return null;
+  const block = document.createElement("div");
+  block.className = "specify";
+  const pair = document.createElement("div");
+  pair.className = kinds.length === 1 ? "specify-pair is-single" : "specify-pair";
+  kinds.forEach((kind) => pair.appendChild(specifyColumn(group, kind, specifyLabel(kind))));
+  block.appendChild(pair);
+  const details = group.details || [];
+  const index = details.findIndex((detail) => kinds.includes(detail.open));
+  if (index < 0) return block;
+  const detail = details[index];
+  const panel = detailChoiceField(specifyLabel(detail.open), detail.open, specifyChipClass(detail.open), group, detail, specifyOptions(detail.open), `${specifyLabel(detail.open)} for this treasure`);
+  panel.dataset.detail = String(index);
+  block.appendChild(panel);
+  return block;
+}
+
+function specifyKinds(group) {
+  const chosen = ["rarity", "type", "size"].filter((kind) => group[kind]);
+  if (!chosen.length) return [];
+  return ["rarity", "type", "size"].filter((kind) => !group[kind]);
+}
+
+function specifyLabel(kind) {
+  if (kind === "rarity") return "Rarity";
+  if (kind === "type") return "Type";
+  return "Size";
+}
+
+function specifyChipClass(kind) {
+  if (kind === "rarity") return "add-rarities";
+  if (kind === "size") return "add-sizes";
+  return "";
+}
+
+function specifyOptions(kind) {
+  if (kind === "rarity") {
+    return state.data.rarities.map((rarity) => ({
+      id: rarity.id,
+      label: rarity.name,
+      color: rarity.color,
+      ink: rarity.ink
+    }));
+  }
+  if (kind === "type") return state.data.types.map((type) => ({ id: type.id, label: type.name }));
+  return orderedSizePresets().map((size) => ({ id: size, label: size }));
+}
+
+function specifyChipLabel(kind, id) {
+  if (kind === "size") return sizeLabel(id);
+  if (kind === "rarity") return rarityName(id);
+  return typeName(id);
+}
+
+function paintRarityChip(chip, id) {
+  const rarity = state.data.rarities.find((entry) => entry.id === id);
+  if (!rarity) return;
+  chip.style.setProperty("--chip", rarity.color);
+  chip.style.setProperty("--chip-ink", rarity.ink);
+}
+
+function specifyColumn(group, kind, label) {
+  const field = document.createElement("fieldset");
+  const legend = document.createElement("legend");
+  legend.textContent = label;
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  const details = group.details || [];
+  const grouped = new Map();
+  details.forEach((detail, index) => {
+    const id = detail[kind];
+    if (!id) return;
+    if (!grouped.has(id)) grouped.set(id, { index, count: 0 });
+    grouped.get(id).count += 1;
+  });
+  grouped.forEach((info, id) => chips.appendChild(specifyKnownChip(group, kind, id, info)));
+  const shared = group[kind] || "";
+  const sharedCount = shared ? sharedCountInGroup(group, kind) : 0;
+  if (shared && sharedCount > 0) chips.appendChild(specifySharedChip(kind, shared, sharedCount));
+  const unknown = unknownInGroup(group, kind);
+  const locked = kind === "size" && group.type === "collection";
+  if (!locked && unknown !== 0) chips.appendChild(specifyUnknownChip(group, kind, unknown));
+  field.append(legend, chips);
+  return field;
+}
+
+function specifyKnownChip(group, kind, id, info) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "chip is-on";
+  button.dataset.specifyEdit = kind;
+  button.dataset.detail = String(info.index);
+  button.dataset.id = id;
+  const open = group.details[info.index] && group.details[info.index].open === kind;
+  button.classList.toggle("is-selected", open);
+  button.setAttribute("aria-pressed", open ? "true" : "false");
+  const name = document.createElement("span");
+  name.textContent = specifyChipLabel(kind, id);
+  if (kind === "rarity") paintRarityChip(button, id);
+  const number = document.createElement("span");
+  number.className = "count";
+  number.textContent = kind === "size" ? `×${info.count}` : String(info.count);
+  button.append(name, number);
+  return button;
+}
+
+function specifySharedChip(kind, id, count) {
+  const chip = document.createElement("span");
+  chip.className = "chip is-on";
+  const name = document.createElement("span");
+  name.textContent = specifyChipLabel(kind, id);
+  if (kind === "rarity") paintRarityChip(chip, id);
+  const number = document.createElement("span");
+  number.className = "count";
+  number.textContent = kind === "size" ? `×${count}` : String(count);
+  chip.append(name, number);
+  return chip;
+}
+
+function specifyUnknownChip(group, kind, unknown) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "chip is-on";
+  button.dataset.specifyUnknown = kind;
+  button.style.setProperty("--chip", "#3a4154");
+  button.style.setProperty("--chip-ink", "#f6f1e7");
+  const editing = (group.details || []).some((detail) => detail.open === kind && !detail[kind]);
+  button.classList.toggle("is-selected", editing);
+  button.setAttribute("aria-pressed", editing ? "true" : "false");
+  button.setAttribute("aria-label", unknown == null ? `Unknown ${kind}` : `Unknown ${kind}, ${unknown}`);
+  const name = document.createElement("span");
+  name.textContent = "Unknown";
+  button.appendChild(name);
+  if (unknown != null) {
+    const number = document.createElement("span");
+    number.className = "count";
+    number.textContent = String(unknown);
+    button.appendChild(number);
+  }
+  return button;
+}
+
+function unknownInGroup(group, kind) {
+  const count = parseCount(group.count);
+  const shared = group[kind] || "";
+  const details = group.details || [];
+  if (count == null) return shared ? 0 : null;
+  let unknown = 0;
+  for (let index = 0; index < count; index += 1) {
+    const own = details[index] && details[index][kind];
+    if (!own && !shared) unknown += 1;
+  }
+  return unknown;
+}
+
+function sharedCountInGroup(group, kind) {
+  const count = parseCount(group.count);
+  if (!group[kind] || count == null) return 0;
+  const details = group.details || [];
+  let shared = 0;
+  for (let index = 0; index < count; index += 1) {
+    if (!(details[index] && details[index][kind])) shared += 1;
+  }
+  return shared;
+}
+
+function clearCoveredDetails(group) {
+  (group.details || []).forEach((detail) => {
+    ["rarity", "type", "size"].forEach((kind) => {
+      if (!group[kind]) return;
+      detail[kind] = "";
+      if (detail.open === kind) detail.open = "";
+    });
+  });
+  pruneEmptyDetails(group);
+}
+
+function pruneEmptyDetails(group) {
+  group.details = (group.details || []).filter((detail) => detail.open || detail.rarity || detail.type || detail.size || String(detail.price || "").trim());
+}
+
+function openSpecify(group, kind, index) {
+  if (!group.details) group.details = [];
+  if (kind === "size" && group.type === "collection") return;
+  if (index >= 0) {
+    const detail = group.details[index];
+    if (!detail || (kind === "size" && detailType(group, detail) === "collection")) return;
+    const next = detail.open === kind ? "" : kind;
+    group.open = "";
+    group.details.forEach((item, itemIndex) => {
+      item.open = itemIndex === index ? next : "";
+    });
+    pruneEmptyDetails(group);
+    rerenderGroups();
+    hideError();
+    return;
+  }
+  const openEmpty = group.details.findIndex((detail) => detail.open === kind && !detail[kind]);
+  if (openEmpty >= 0) {
+    group.details[openEmpty].open = "";
+    pruneEmptyDetails(group);
+    rerenderGroups();
+    hideError();
+    return;
+  }
+  let target = group.details.findIndex((detail) => !detail[kind] && !(kind === "size" && detailType(group, detail) === "collection"));
+  if (target < 0) {
+    const count = parseCount(group.count);
+    const filled = group.details.filter((detail) => detail.rarity || detail.type || detail.size || String(detail.price || "").trim()).length;
+    if (count != null && filled >= count) {
+      showError("Every treasure in this count is already specified.");
+      return;
+    }
+    group.details.push(emptyDetail());
+    target = group.details.length - 1;
+  }
+  group.open = "";
+  group.details.forEach((detail, itemIndex) => {
+    detail.open = itemIndex === target ? kind : "";
+  });
+  rerenderGroups();
+  hideError();
+}
+
+function detailFacts(group, detail) {
+  return {
+    rarity: detail.rarity || group.rarity || "",
+    type: detail.type || group.type || "",
+    size: detail.size || group.size || ""
+  };
+}
+
+function detailType(group, detail) {
+  return detail.type || group.type || "";
+}
+
+function detailChoiceField(legendText, kind, extraClass, group, detail, options, ariaLabel) {
+  const fieldset = document.createElement("fieldset");
+  fieldset.className = "cat-panel";
+  fieldset.dataset.detailPanel = kind;
+  const locked = kind === "size" && detailType(group, detail) === "collection";
+  fieldset.hidden = locked || detail.open !== kind;
+  const legend = document.createElement("legend");
+  legend.textContent = legendText;
+  const chips = document.createElement("div");
+  chips.className = extraClass ? `chips ${extraClass}` : "chips";
+  chips.setAttribute("role", "group");
+  chips.setAttribute("aria-label", ariaLabel);
+  options.forEach((option) => {
+    const count = specifyAssigned(group, kind, option.id);
+    const wrap = document.createElement("div");
+    wrap.className = "chip-wrap";
+    wrap.append(
+      specifyStepButton(kind, option, "-1", count === 0),
+      specifyCountChip(kind, option, count),
+      specifyStepButton(kind, option, "1", !canAddSpecify(group, kind, option.id))
+    );
+    chips.appendChild(wrap);
+  });
+  fieldset.append(legend, chips);
+  return fieldset;
+}
+
+function specifyAssigned(group, kind, id) {
+  return (group.details || []).filter((detail) => detail[kind] === id).length;
+}
+
+function specifyStepButton(kind, option, delta, disabled) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "step-btn chip-adjust";
+  button.dataset.specifyStep = delta;
+  button.dataset.specifyKind = kind;
+  button.dataset.specifyId = option.id;
+  button.disabled = disabled;
+  button.textContent = delta === "1" ? "+" : "−";
+  button.setAttribute("aria-label", `${delta === "1" ? "Increase" : "Decrease"} ${option.label}`);
+  return button;
+}
+
+function specifyCountChip(kind, option, count) {
+  const chip = document.createElement("span");
+  chip.className = count > 0 ? "chip is-on" : "chip";
+  if (option.color) {
+    chip.classList.add("is-swatch");
+    chip.style.setProperty("--chip", option.color);
+    chip.style.setProperty("--chip-ink", option.ink);
+    const number = document.createElement("span");
+    number.className = "count";
+    number.textContent = String(count);
+    chip.appendChild(number);
+    chip.setAttribute("aria-label", `${option.label}, ${count}`);
+    return chip;
+  }
+  const name = document.createElement("span");
+  name.textContent = option.label;
+  const number = document.createElement("span");
+  number.className = "count";
+  number.textContent = kind === "size" ? `×${count}` : String(count);
+  chip.append(name, number);
+  return chip;
+}
+
+function specifyFits(group, detail, kind, id) {
+  if (kind === "size" && (group.type === "collection" || detailType(group, detail) === "collection")) return false;
+  return catalogSupports(choiceFacts(detailFacts(group, detail), kind, id));
+}
+
+function canAddSpecify(group, kind, id) {
+  const count = parseCount(group.count);
+  if (count == null) return true;
+  if (unknownInGroup(group, kind) === 0) return false;
+  const details = group.details || [];
+  if (details.some((detail) => !detail[kind] && specifyFits(group, detail, kind, id))) return true;
+  if (details.length >= count) return false;
+  return specifyFits(group, emptyDetail(), kind, id);
+}
+
+function addSpecify(group, kind, id) {
+  if (!group.details) group.details = [];
+  const count = parseCount(group.count);
+  if (count == null) {
+    showError("Enter a whole number of at least 1 for each group.");
+    return;
+  }
+  if (unknownInGroup(group, kind) === 0) {
+    showError("Every treasure in this count is already specified.");
+    return;
+  }
+  let index = group.details.findIndex((detail) => !detail[kind] && specifyFits(group, detail, kind, id));
+  if (index < 0) {
+    if (group.details.length >= count || !specifyFits(group, emptyDetail(), kind, id)) return;
+    group.details.push(emptyDetail());
+    index = group.details.length - 1;
+  }
+  const detail = group.details[index];
+  detail[kind] = id;
+  if (kind === "type" && id === "collection") {
+    detail.size = collectionShape();
+    if (detail.open === "size") detail.open = "";
+  }
+  rerenderGroups();
+  hideError();
+}
+
+function removeSpecify(group, kind, id) {
+  const details = group.details || [];
+  let index = -1;
+  for (let cursor = details.length - 1; cursor >= 0; cursor -= 1) {
+    if (details[cursor][kind] !== id) continue;
+    if (kind === "size" && detailType(group, details[cursor]) === "collection") continue;
+    index = cursor;
+    break;
+  }
+  if (index < 0) return;
+  const detail = details[index];
+  detail[kind] = "";
+  if (kind === "type" && id === "collection" && detail.size === collectionShape()) detail.size = "";
+  pruneEmptyDetails(group);
+  rerenderGroups();
+  hideError();
+}
+
+function rerenderGroups() {
+  const sheet = $("#sheet");
+  const top = sheet ? sheet.scrollTop : 0;
+  renderGroups();
+  if (sheet) sheet.scrollTop = top;
 }
 
 function categoryRow(group) {
@@ -525,6 +904,58 @@ function onSheetClick(event) {
     return;
   }
 
+  const specifyUnknown = event.target.closest("[data-specify-unknown]");
+  if (specifyUnknown) {
+    captureInputs();
+    const entry = specifyUnknown.closest("[data-group]");
+    const group = entry && state.groups[Number(entry.dataset.group)];
+    if (!group) return;
+    openSpecify(group, specifyUnknown.dataset.specifyUnknown, -1);
+    return;
+  }
+
+  const specifyEdit = event.target.closest("[data-specify-edit]");
+  if (specifyEdit) {
+    captureInputs();
+    const entry = specifyEdit.closest("[data-group]");
+    const group = entry && state.groups[Number(entry.dataset.group)];
+    if (!group) return;
+    openSpecify(group, specifyEdit.dataset.specifyEdit, Number(specifyEdit.dataset.detail));
+    return;
+  }
+
+  const step = event.target.closest("[data-specify-step]");
+  if (step) {
+    captureInputs();
+    const entry = step.closest("[data-group]");
+    const group = entry && state.groups[Number(entry.dataset.group)];
+    if (!group) return;
+    if (Number(step.dataset.specifyStep) < 0) removeSpecify(group, step.dataset.specifyKind, step.dataset.specifyId);
+    else addSpecify(group, step.dataset.specifyKind, step.dataset.specifyId);
+    return;
+  }
+
+  const detailPick = event.target.closest("[data-detail-pick]");
+  if (detailPick) {
+    const entry = detailPick.closest("[data-group]");
+    const row = detailPick.closest("[data-detail]");
+    const group = entry && state.groups[Number(entry.dataset.group)];
+    const detail = group && group.details && group.details[Number(row.dataset.detail)];
+    if (!detail) return;
+    const kind = detailPick.dataset.detailPick;
+    const next = detailPick.dataset.id;
+    detail[kind] = detail[kind] === next ? "" : next;
+    if (kind === "type") {
+      if (detail.type === "collection") {
+        detail.size = collectionShape();
+        if (detail.open === "size") detail.open = "";
+      } else if (detail.size === collectionShape()) detail.size = "";
+    }
+    rerenderGroups();
+    hideError();
+    return;
+  }
+
   const category = event.target.closest("[data-open-cat]");
   if (category) {
     const entry = category.closest("[data-group]");
@@ -533,8 +964,11 @@ function onSheetClick(event) {
     if (!group) return;
     const kind = category.dataset.openCat;
     if (kind === "size" && group.type === "collection") return;
-    group.open = group.open === kind ? "" : kind;
-    syncCategoryPanels(entry, group);
+    const next = group.open === kind ? "" : kind;
+    (group.details || []).forEach((detail) => { detail.open = ""; });
+    pruneEmptyDetails(group);
+    group.open = next;
+    rerenderGroups();
     hideError();
     return;
   }
@@ -548,7 +982,8 @@ function onSheetClick(event) {
   const kind = button.dataset.pick;
   group[kind] = group[kind] === button.dataset.id ? "" : button.dataset.id;
   if (kind === "type") lockCollectionGroup(group);
-  syncGroupChips(entry, group);
+  clearCoveredDetails(group);
+  rerenderGroups();
   hideError();
 }
 
@@ -559,10 +994,23 @@ function onSheetInput(event) {
   if (!group) return;
   if (event.target.classList.contains("group-count")) {
     group.count = event.target.value;
-    const price = entry.querySelector(".group-price");
-    if (price) price.placeholder = pricePlaceholder(group.count);
+    const index = entry.dataset.group;
+    const caret = event.target.selectionStart;
+    rerenderGroups();
+    const again = document.querySelector(`#groups .entry[data-group="${index}"] .group-count`);
+    if (again) {
+      again.focus();
+      if (caret != null) again.setSelectionRange(caret, caret);
+    }
+    hideError();
+    return;
   }
   if (event.target.classList.contains("group-price")) group.price = event.target.value;
+  if (event.target.classList.contains("specify-price")) {
+    const row = event.target.closest("[data-detail]");
+    const detail = row && group.details && group.details[Number(row.dataset.detail)];
+    if (detail) detail.price = event.target.value;
+  }
   if (event.target.classList.contains("group-use")) {
     group.use = event.target.value;
     entry.classList.toggle("is-max", group.use === "max");
@@ -598,6 +1046,11 @@ function captureInputs() {
     if (count) group.count = count.value;
     if (price) group.price = price.value;
     if (use) group.use = use.value;
+    entry.querySelectorAll("[data-detail]").forEach((row) => {
+      const detail = group.details && group.details[Number(row.dataset.detail)];
+      const specified = row.querySelector(".specify-price");
+      if (detail && specified) detail.price = specified.value;
+    });
   });
 }
 
@@ -640,13 +1093,30 @@ function onAdd(event) {
       showError(expected);
       return;
     }
+    const details = use === "max" ? [] : (group.details || []).filter((detail) => detail.rarity || detail.type || detail.size || String(detail.price || "").trim()).map((detail) => {
+      const raw = String(detail.price || "").trim();
+      const picked = { rarity: detail.rarity || "", type: detail.type || "", size: detail.size || "" };
+      if (!raw) return Object.assign(picked, { price: null });
+      const price = parseCoins(raw);
+      if (Number.isNaN(price)) return { error: true };
+      return Object.assign(picked, { price });
+    });
+    if (details.some((detail) => detail.error)) {
+      showError("Enter a price like 120000, 120k, or 1.2m.");
+      return;
+    }
+    if (details.length > count) {
+      showError("Specify at most as many treasures as the count.");
+      return;
+    }
     const spec = {
       count,
       rarity: group.rarity || "",
       type: group.type || "",
       size: group.size || null,
       prices: prices.prices,
-      use
+      use,
+      details
     };
     const picks = categoryPicks(spec);
     if (use === "max" && picks.length > 1) {
@@ -675,7 +1145,8 @@ function onAdd(event) {
   const itemSpecs = parsed.filter((spec) => spec.use !== "max");
   itemSpecs.forEach((spec) => {
     for (let index = 0; index < spec.count; index += 1) {
-      state.board.items.push(blankItem(factFrom(spec, index)));
+      const detail = spec.details && index < spec.details.length ? spec.details[index] : null;
+      state.board.items.push(blankItem(itemFact(spec, detail, index)));
     }
   });
   const firstRarityMax = new Set();
@@ -778,10 +1249,14 @@ function additionPastMax(specs) {
       });
     }
     if (spec.use === "max") return;
-    picks.forEach((picked) => {
-      counts[picked.kind][picked.id] = (counts[picked.kind][picked.id] || 0) + spec.count;
-      added[picked.kind][picked.id] = true;
-    });
+    const listed = spec.details || [];
+    for (let index = 0; index < spec.count; index += 1) {
+      const detail = index < listed.length ? listed[index] : null;
+      const fact = itemFact(spec, detail, index);
+      if (fact.rarity) noteAdded(counts, added, "rarities", fact.rarity);
+      if (fact.type) noteAdded(counts, added, "types", fact.type);
+      if (fact.size != null && fact.size !== "") noteAdded(counts, added, "sizes", String(fact.size));
+    }
   });
   for (const kind of ["rarities", "types", "sizes"]) {
     for (const id of Object.keys(added[kind])) {
@@ -802,6 +1277,24 @@ function hasBoardInfo() {
   const maxes = state.board.maxCounts;
   if (!maxes) return false;
   return ["rarities", "types", "sizes"].some((kind) => Object.keys(maxes[kind] || {}).length > 0);
+}
+
+function noteAdded(counts, added, kind, id) {
+  counts[kind][id] = (counts[kind][id] || 0) + 1;
+  added[kind][id] = true;
+}
+
+function itemFact(spec, detail, index) {
+  const fact = {};
+  const rarity = (detail && detail.rarity) || spec.rarity || "";
+  const type = (detail && detail.type) || spec.type || "";
+  const size = (detail && detail.size) || spec.size;
+  if (rarity) fact.rarity = rarity;
+  if (type) fact.type = type;
+  if (size != null && size !== "") fact.size = size;
+  const price = detail && detail.price != null ? detail.price : priceAt(spec, index);
+  if (price != null) fact.price = price;
+  return fact;
 }
 
 function factFrom(spec, index) {
@@ -1005,7 +1498,7 @@ function render() {
     max: state.board.maxCounts.types[entry.id]
   })));
   renderUnknown("types");
-  renderGroup($("#sizes"), $("#size-group"), "sizes", state.data.sizePresets.map((size) => ({
+  renderGroup($("#sizes"), $("#size-group"), "sizes", orderedSizePresets().map((size) => ({
     id: String(size),
     label: sizeLabel(size),
     count: counts.sizes[String(size)] || 0,
@@ -1278,7 +1771,7 @@ function levelChoices(kind) {
     }));
   }
   if (kind === "types") return state.data.types.map((entry) => ({ id: entry.id, label: entry.name }));
-  return state.data.sizePresets.map((size) => ({ id: String(size), label: sizeLabel(size) }));
+  return orderedSizePresets().map((size) => ({ id: size, label: sizeLabel(size) }));
 }
 
 function renderDetail() {
@@ -1672,6 +2165,14 @@ function itemSummary(item) {
   return parts.join(" · ") || "Unknown rarity";
 }
 
+function orderedSizePresets() {
+  return ((state.data && state.data.sizePresets) || []).map(String).slice().sort((left, right) => {
+    const [leftColumns, leftRows] = left.split("x").map(Number);
+    const [rightColumns, rightRows] = right.split("x").map(Number);
+    return leftColumns - rightColumns || leftRows - rightRows;
+  });
+}
+
 function sizeCells(size) {
   if (size == null || size === "") return null;
   const shape = String(size).match(/^(\d+)x(\d+)$/i);
@@ -1686,8 +2187,9 @@ function sizeKey(size) {
   if (/^\d+x\d+$/i.test(text)) return text.toLowerCase();
   const cells = sizeCells(size);
   const presets = (state.data && state.data.sizePresets) || [];
-  const match = presets.find((preset) => sizeCells(preset) === cells);
-  return match ? String(match) : text;
+  const matches = presets.filter((preset) => sizeCells(preset) === cells);
+  if (cells === 15 && matches.some((preset) => String(preset) === "5x3")) return "5x3";
+  return matches.length ? String(matches[0]) : text;
 }
 
 function sizeLabel(size, type) {
@@ -2083,6 +2585,9 @@ function loadBoard() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     if (!saved || typeof saved !== "object") return blank;
     const items = Array.isArray(saved.items) ? saved.items.filter(validItem) : [];
+    items.forEach((item) => {
+      if (item.type === "figurine") item.type = "collection";
+    });
     const total = Number(saved.treasureTotal);
     return {
       house: typeof saved.house === "string" ? saved.house : blank.house,
@@ -2105,6 +2610,10 @@ function normalizeMaxCounts(raw) {
     Object.keys(source).forEach((id) => {
       const value = Number(source[id]);
       if (!Number.isInteger(value) || value < 0) return;
+      if (kind === "types" && (id === "figurine" || id === "collection")) {
+        result.types.collection = (result.types.collection || 0) + value;
+        return;
+      }
       const key = kind === "sizes" ? sizeKey(id) : id;
       if (key) result[kind][key] = value;
     });
@@ -2150,5 +2659,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=135").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=141").catch(() => {});
 }

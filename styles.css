@@ -894,7 +894,8 @@ legend {
 
 .add-another:hover { background: var(--raise-2); }
 
-.entry.is-max .field:has(.group-price) { display: none; }
+.entry.is-max .field:has(.group-price),
+.entry.is-max .specify { display: none; }
 
 .entry-head .count-use {
   flex: 0 0 auto;
@@ -920,6 +921,29 @@ select.group-use {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-top: 10px;
+}
+
+.cat-row.is-pair { grid-template-columns: 1fr 1fr; }
+
+.specify { margin-top: 12px; }
+
+.specify-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.specify-pair.is-single { grid-template-columns: 1fr; }
+
+.specify-pair fieldset { margin: 0; }
+
+.specify-pair legend { margin-bottom: 8px; }
+
+.specify .cat-panel { margin-top: 10px; }
+
+.specify .cat-panel .chip-wrap .chip {
+  flex: 0 0 auto;
+  max-width: none;
 }
 
 .cat-btn {

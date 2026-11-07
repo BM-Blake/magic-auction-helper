@@ -42,7 +42,6 @@
     { "id": "red", "name": "Red", "color": "#ff8d86", "ink": "#2a1010" }
   ],
   "types": [
-    { "id": "figurine", "name": "Figurine", "group": "collection" },
     { "id": "collection", "name": "Collection", "group": "collection" },
     { "id": "weapon", "name": "Weapon", "group": "gear" },
     { "id": "armor", "name": "Armor", "group": "gear" },
@@ -55,12 +54,12 @@
     { "id": "auction-item", "name": "Auction Item", "group": "info" }
   ],
   "groups": [
-    { "id": "collection", "label": "Figurines and collection pieces" },
+    { "id": "collection", "label": "Collection pieces" },
     { "id": "gear", "label": "Weapons, armor, accessories, and gems" },
     { "id": "consumable", "label": "Materials, minerals, potions, and food" },
     { "id": "info", "label": "Auction items used for clues" }
   ],
-  "sizePresets": ["1x1", "1x2", "1x3", "1x4", "2x1", "2x2", "2x3", "2x4", "3x1", "3x2", "3x3", "3x4", "4x1", "4x2", "4x4", "5x3"],
+  "sizePresets": ["1x1", "1x2", "1x3", "1x4", "1x5", "2x1", "2x2", "2x3", "2x4", "2x5", "3x1", "3x2", "3x3", "3x4", "3x5", "4x1", "4x2", "4x4", "5x3"],
   "sizeBands": [
     {
       "id": "small",
