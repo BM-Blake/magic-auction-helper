@@ -209,6 +209,51 @@ button { cursor: pointer; }
 
 .menu-btn:hover { filter: brightness(1.05); }
 
+.support {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.support-prompt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.support-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: max-content;
+  max-width: 100%;
+}
+
+.support-actions .bmc-btn-container {
+  display: flex;
+  justify-content: center;
+}
+
+.support-crypto {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+  padding: 0 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.support-crypto:hover { filter: brightness(1.05); }
+
 .title-row {
   display: flex;
   align-items: center;
