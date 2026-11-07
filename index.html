@@ -11,7 +11,7 @@
     <title>Magic Auction Helper</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=117">
+    <link rel="stylesheet" href="styles.css?v=126">
   </head>
   <body>
     <div class="app">
@@ -52,8 +52,14 @@
         </div>
         <p id="network" class="status" hidden></p>
         <section class="worth" aria-live="polite">
-          <p class="worth-label">Estimate worth</p>
-          <p id="worth-range" class="worth-range">0</p>
+          <div class="worth-figure">
+            <p class="worth-label">Estimate worth</p>
+            <p id="worth-range" class="worth-range">0</p>
+          </div>
+          <div class="worth-figure">
+            <p class="worth-label">Recommended bid</p>
+            <p id="recommended-bid" class="worth-range">0</p>
+          </div>
         </section>
         <div class="known-picker" id="known-picker">
           <p class="worth-label" id="known-label">Item list</p>
@@ -120,6 +126,6 @@
       <p id="form-error" class="form-error" role="alert" hidden></p>
       <button type="submit" class="primary">Add</button>
     </form>
-    <script src="app.js?v=117"></script>
+    <script src="app.js?v=126"></script>
   </body>
 </html>

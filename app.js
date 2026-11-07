@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=117"),
-      fetch("data/treasures.json?v=117")
+      fetch("data/auction.json?v=126"),
+      fetch("data/treasures.json?v=126")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -603,6 +603,12 @@ function onAdd(event) {
     parsed.push(spec);
   }
 
+  const over = additionPastMax(parsed);
+  if (over) {
+    showError(`${over.label} would be ${over.count}/${over.max}.`);
+    return;
+  }
+
   const totalSpecs = parsed.filter((spec) => spec.use === "max" && categoryPicks(spec).length === 0);
   if (totalSpecs.length > 1) {
     showError("Enter one max for the total number of treasures.");
@@ -615,11 +621,15 @@ function onAdd(event) {
       state.board.items.push(blankItem(factFrom(spec, index)));
     }
   });
+  const firstRarityMax = new Set();
+  maxSpecs.forEach((spec) => {
+    if (spec.use === "max" && spec.rarity && !Number.isInteger(state.board.maxCounts.rarities[spec.rarity])) {
+      firstRarityMax.add(spec.rarity);
+    }
+  });
   if (totalSpecs.length === 1) state.board.treasureTotal = totalSpecs[0].count;
   applyMaxes(maxSpecs);
-  maxSpecs.forEach((spec) => {
-    if (spec.use === "max" && spec.rarity) revealUnknownForMax(spec.count);
-  });
+  firstRarityMax.forEach((rarity) => revealUnknownForMax(rarity, state.board.maxCounts.rarities[rarity]));
 
   resetComposer();
   setSheet(false);
@@ -630,15 +640,17 @@ function onAdd(event) {
 function applyMaxes(specs) {
   specs.forEach((spec) => {
     categoryPicks(spec).forEach((picked) => {
-      state.board.maxCounts[picked.kind][picked.id] = spec.count;
+      const current = state.board.maxCounts[picked.kind][picked.id];
+      state.board.maxCounts[picked.kind][picked.id] = Number.isInteger(current) ? current + spec.count : spec.count;
     });
   });
 }
 
-function revealUnknownForMax(count) {
+function revealUnknownForMax(rarity, count) {
   const board = state.board;
+  const known = board.items.filter((item) => item.rarity === rarity).length;
   const unrated = board.items.filter((item) => !item.rarity).length;
-  let make = Math.max(0, count - unrated);
+  let make = Math.max(0, count - known - unrated);
   if (board.treasureTotal != null) make = Math.min(make, Math.max(0, board.treasureTotal - board.items.length));
   for (let index = 0; index < make; index += 1) board.items.push(blankItem({}));
 }
@@ -659,6 +671,72 @@ function categoryMax(selected) {
   if (!selected || !state.board.maxCounts) return null;
   const value = state.board.maxCounts[selected.kind]?.[selected.id];
   return Number.isInteger(value) ? value : null;
+}
+
+function atCategoryMax(kind, id) {
+  if (!state.board || id == null || id === "" || id === "unknown") return false;
+  const key = kind === "sizes" ? sizeKey(id) : String(id);
+  const max = state.board.maxCounts?.[kind]?.[key];
+  if (!Number.isInteger(max)) return false;
+  const counts = tally(state.board.items, state.data);
+  return (counts[kind]?.[key] || 0) >= max;
+}
+
+function assigningWouldExceed(kind, id, item) {
+  if (!id) return false;
+  const next = kind === "sizes" ? sizeKey(id) : id;
+  const current = kind === "rarities"
+    ? item.rarity
+    : kind === "types"
+      ? item.type
+      : item.size == null ? "" : sizeKey(item.size);
+  if (current === next) return false;
+  return atCategoryMax(kind, next);
+}
+
+function fillWouldExceed(item, treasure) {
+  if (!item.rarity && treasure.rarity && atCategoryMax("rarities", treasure.rarity)) return true;
+  if (!item.type && treasure.type && atCategoryMax("types", treasure.type)) return true;
+  if (item.size == null && (treasure.shape || treasure.size != null)) {
+    const size = treasureShape(treasure) || sizeKey(treasure.size);
+    if (size && atCategoryMax("sizes", size)) return true;
+  }
+  return false;
+}
+
+function additionPastMax(specs) {
+  const counts = tally(state.board.items, state.data);
+  const maxes = {
+    rarities: Object.assign({}, state.board.maxCounts.rarities),
+    types: Object.assign({}, state.board.maxCounts.types),
+    sizes: Object.assign({}, state.board.maxCounts.sizes)
+  };
+  const added = { rarities: {}, types: {}, sizes: {} };
+  specs.forEach((spec) => {
+    const picks = categoryPicks(spec);
+    if (spec.use === "max" || spec.use === "both") {
+      picks.forEach((picked) => {
+        const current = maxes[picked.kind][picked.id];
+        maxes[picked.kind][picked.id] = Number.isInteger(current) ? current + spec.count : spec.count;
+      });
+    }
+    if (spec.use === "max") return;
+    picks.forEach((picked) => {
+      counts[picked.kind][picked.id] = (counts[picked.kind][picked.id] || 0) + spec.count;
+      added[picked.kind][picked.id] = true;
+    });
+  });
+  for (const kind of ["rarities", "types", "sizes"]) {
+    for (const id of Object.keys(added[kind])) {
+      const max = maxes[kind][id];
+      const count = counts[kind][id] || 0;
+      if (Number.isInteger(max) && count > max) {
+        const label = kind === "rarities" ? rarityName(id) : kind === "types" ? typeName(id) : sizeLabel(id);
+        return { label, count, max };
+      }
+    }
+  }
+  return null;
 }
 
 function hasBoardInfo() {
@@ -806,6 +884,7 @@ function adjustChild(facts, field, id, delta) {
 }
 
 function increaseChild(facts, field, id) {
+  if (atCategoryMax(field, id)) return false;
   const open = openDonors(facts, field, id)
     .sort((left, right) => detailSpecificity(left) - detailSpecificity(right));
   if (!open.length) return false;
@@ -987,7 +1066,7 @@ function renderTreasureTotal() {
   if (!total) return;
   const recorded = state.board ? state.board.items.length : 0;
   const cap = state.board ? state.board.treasureTotal : null;
-  total.textContent = Number.isInteger(cap) ? `${recorded} of ${cap}` : String(recorded);
+  total.textContent = Number.isInteger(cap) ? `${recorded}/${cap}` : String(recorded);
 }
 
 function renderGroup(container, fieldset, kind, entries) {
@@ -1068,7 +1147,7 @@ function canDecrease(facts, field, id) {
 }
 
 function canAssign(facts, field, id) {
-  if (id === "unknown") return false;
+  if (id === "unknown" || atCategoryMax(field, id)) return false;
   const pool = Object.assign({}, facts);
   writeDetailFact(pool, field, "unknown");
   return openDonors(pool, field, id).length > 0;
@@ -1160,7 +1239,7 @@ function renderDetail() {
   $(unknownFieldset(state.selected.kind)).appendChild(box);
   box.hidden = false;
   const label = selectionLabel(state.selected);
-  $("#detail-title").textContent = max == null ? label : `${label} · ${items.length} of ${max}`;
+  $("#detail-title").textContent = max == null ? label : `${label} · ${items.length}/${max}`;
   $("#detail-empty").hidden = items.length > 0 || unknownOpen;
   const list = $("#detail-list");
   list.className = "detail-cats";
@@ -1185,7 +1264,7 @@ function renderDetail() {
     const total = unknown ? unknownCount(state.board, state.selected.kind) : items.length;
     const count = document.createElement("span");
     count.className = "count";
-    count.textContent = total ? `${filled} of ${total}` : String(filled);
+    count.textContent = total ? `${filled}/${total}` : String(filled);
     button.append(name, count);
     row.appendChild(button);
     if (open) {
@@ -1226,10 +1305,13 @@ function itemCard(item) {
     if (rarity) card.style.borderColor = rarity.color;
   }
   if (treasure) {
+    const titleRow = document.createElement("div");
+    titleRow.className = "item-name-row";
     const title = document.createElement("p");
     title.className = "item-name";
     title.textContent = treasure.name;
-    card.appendChild(title);
+    titleRow.append(title, itemRemoveButton(item));
+    card.appendChild(titleRow);
   }
   card.append(
     itemPriceField(item, Boolean(treasure)),
@@ -1240,6 +1322,28 @@ function itemCard(item) {
   const choices = treasure ? [] : matchingTreasures(item);
   if (choices.length > 1 && choices.length <= 6) card.appendChild(itemNameField(item, choices));
   return card;
+}
+
+function itemRemoveButton(item) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "minus";
+  button.textContent = "−";
+  button.setAttribute("aria-label", `Remove ${exactTreasure(item)?.name || "item"}`);
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    removeLockedItem(item.id);
+  });
+  return button;
+}
+
+function removeLockedItem(id) {
+  if (!state.board) return;
+  const index = state.board.items.findIndex((entry) => entry.id === id);
+  if (index < 0) return;
+  state.board.items.splice(index, 1);
+  persist();
+  render();
 }
 
 function itemNameField(item, choices) {
@@ -1297,7 +1401,7 @@ function itemFactSelect(item, field, locked) {
   select.appendChild(blank);
   if (field === "rarity") {
     state.data.rarities.forEach((entry) => {
-      if (entry.id !== item.rarity && !catalogSupports(choiceFacts(item, "rarity", entry.id))) return;
+      if (entry.id !== item.rarity && (atCategoryMax("rarities", entry.id) || !catalogSupports(choiceFacts(item, "rarity", entry.id)))) return;
       const option = document.createElement("option");
       option.value = entry.id;
       option.textContent = entry.name;
@@ -1306,7 +1410,7 @@ function itemFactSelect(item, field, locked) {
     select.value = item.rarity || "";
   } else if (field === "type") {
     state.data.types.forEach((entry) => {
-      if (entry.id !== item.type && !catalogSupports(choiceFacts(item, "type", entry.id))) return;
+      if (entry.id !== item.type && (atCategoryMax("types", entry.id) || !catalogSupports(choiceFacts(item, "type", entry.id)))) return;
       const option = document.createElement("option");
       option.value = entry.id;
       option.textContent = entry.name;
@@ -1315,7 +1419,7 @@ function itemFactSelect(item, field, locked) {
     select.value = item.type || "";
   } else {
     state.data.sizePresets.forEach((size) => {
-      if (sizeKey(size) !== sizeKey(item.size) && !catalogSupports(choiceFacts(item, "size", size))) return;
+      if (sizeKey(size) !== sizeKey(item.size) && (atCategoryMax("sizes", size) || !catalogSupports(choiceFacts(item, "size", size)))) return;
       const option = document.createElement("option");
       option.value = String(size);
       option.textContent = String(size);
@@ -1351,18 +1455,38 @@ function onItemEdit(event) {
       event.target.setCustomValidity("");
       item.price = price;
     }
-  } else if (field === "rarity") item.rarity = event.target.value;
-  else if (field === "type") {
+  } else if (field === "rarity") {
+    if (assigningWouldExceed("rarities", event.target.value, item)) {
+      render();
+      return;
+    }
+    item.rarity = event.target.value;
+  } else if (field === "type") {
+    if (assigningWouldExceed("types", event.target.value, item)) {
+      render();
+      return;
+    }
+    if (event.target.value === "collection" && sizeKey(item.size) !== collectionShape() && atCategoryMax("sizes", collectionShape())) {
+      render();
+      return;
+    }
     item.type = event.target.value;
     if (item.type === "collection") item.size = collectionShape();
   } else if (field === "size") {
     if (item.type === "collection") return;
+    if (assigningWouldExceed("sizes", event.target.value, item)) {
+      render();
+      return;
+    }
     item.size = event.target.value || null;
     if (item.catalogName && !matchingTreasures(item).some((treasure) => treasure.name === item.catalogName)) delete item.catalogName;
   } else if (field === "name") {
     const chosen = state.data.treasures.find((treasure) => treasure.name === event.target.value);
     if (!chosen) delete item.catalogName;
-    else {
+    else if (fillWouldExceed(item, chosen)) {
+      render();
+      return;
+    } else {
       item.catalogName = chosen.name;
       if (!item.rarity && chosen.rarity) item.rarity = chosen.rarity;
       if (!item.type && chosen.type) item.type = chosen.type;
@@ -1446,6 +1570,8 @@ function renderEstimate() {
     : min === max
       ? formatCoins(min)
       : `${formatCoins(min)} – ${formatCoins(max)}`;
+  const average = (min + max) / 2;
+  $("#recommended-bid").textContent = formatCoins(Math.round(average * 0.75));
 }
 
 function renderExact() {
@@ -1527,7 +1653,7 @@ function lockCollectionGroup(group) {
 }
 
 function quantityLabel(count, max, kind) {
-  if (Number.isInteger(max)) return `${count} of ${max}`;
+  if (Number.isInteger(max)) return `${count}/${max}`;
   if (kind === "sizes") return `×${count}`;
   return String(count);
 }
@@ -1722,6 +1848,7 @@ function resolveExactItems() {
       }
       return;
     }
+    if (fillWouldExceed(item, treasure)) return;
     if (item.catalogName !== treasure.name) {
       item.catalogName = treasure.name;
       changed = true;
@@ -1778,7 +1905,7 @@ function renderKnown() {
     const price = document.createElement("span");
     price.className = "known-price";
     price.textContent = formatCoins(treasure.price);
-    row.append(name, price);
+    row.append(name, price, itemRemoveButton(item));
     menu.appendChild(row);
   });
 }
@@ -1966,5 +2093,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=117").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=126").catch(() => {});
 }

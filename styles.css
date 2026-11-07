@@ -260,6 +260,8 @@ h2 { margin: 0 0 14px; font-weight: 650; font-size: 1rem; }
 }
 
 .worth {
+  display: grid;
+  gap: 14px;
   margin-top: 0;
   padding: 14px 16px;
   border: 1px solid var(--line);
@@ -282,11 +284,11 @@ h2 { margin: 0 0 14px; font-weight: 650; font-size: 1rem; }
 
 .worth-range {
   margin: 6px 0 0;
-  font-size: clamp(1.55rem, 7vw, 2.15rem);
+  font-size: clamp(1.2rem, 5.4vw, 1.7rem);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
   line-height: 1.15;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .known-picker {
@@ -317,6 +319,12 @@ h2 { margin: 0 0 14px; font-weight: 650; font-size: 1rem; }
   height: 12px;
   border-radius: 50%;
   background: var(--chip);
+}
+
+.known-menu .minus {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
 }
 
 .known-name {
@@ -544,7 +552,20 @@ legend {
 .item-card .field { margin-top: 0; }
 
 .item-card .item-name,
-.item-card .item-price { grid-column: 1 / -1; }
+.item-card .item-price,
+.item-name-row { grid-column: 1 / -1; }
+
+.item-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.item-name-row .item-name {
+  flex: 1;
+  min-width: 0;
+}
 
 .item-name {
   margin: 0;
