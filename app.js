@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=143"),
-      fetch("data/treasures.json?v=143")
+      fetch("data/auction.json?v=153"),
+      fetch("data/treasures.json?v=153")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1437,9 +1437,15 @@ function increaseChild(facts, field, id) {
   if (atCategoryMax(field, id)) return false;
   const open = openDonors(facts, field, id)
     .sort((left, right) => detailSpecificity(left) - detailSpecificity(right));
-  if (!open.length) return false;
-  writeDetailFact(open[0], field, id);
-  if (field === "types" && id === "collection") open[0].size = collectionShape();
+  if (open.length) {
+    writeDetailFact(open[0], field, id);
+    if (field === "types" && id === "collection") open[0].size = collectionShape();
+    return true;
+  }
+  if (slotsLeft() < 1) return false;
+  const created = freshFacts(facts, field, id);
+  if (!created) return false;
+  state.board.items.push(blankItem(created));
   return true;
 }
 
@@ -1700,7 +1706,30 @@ function canAssign(facts, field, id) {
   if (id === "unknown" || atCategoryMax(field, id)) return false;
   const pool = Object.assign({}, facts);
   writeDetailFact(pool, field, "unknown");
-  return openDonors(pool, field, id).length > 0;
+  if (openDonors(pool, field, id).length > 0) return true;
+  return slotsLeft() > 0 && freshFacts(facts, field, id) != null;
+}
+
+function slotsLeft() {
+  const total = state.board && state.board.treasureTotal;
+  if (!Number.isInteger(total)) return 0;
+  return Math.max(0, total - state.board.items.length);
+}
+
+function freshFacts(facts, field, id) {
+  const created = Object.assign({}, facts);
+  writeDetailFact(created, field, id);
+  if (field === "types" && id === "collection") {
+    if (atCategoryMax("sizes", collectionShape())) return null;
+    created.size = collectionShape();
+  }
+  const probe = {
+    rarity: created.rarity || "",
+    type: created.type || "",
+    size: created.size == null || created.size === "" ? null : created.size
+  };
+  if (!catalogSupports(probe)) return null;
+  return probe;
 }
 
 function factKind(field) {
@@ -2055,7 +2084,10 @@ function rowsFor(kind, parent, hideUnknown) {
     const facts = Object.assign({}, parent);
     writeDetailFact(facts, kind, choice.id);
     return Object.assign({}, choice, { count: countFacts(facts) });
-  }).filter((choice) => choice.count > 0 || openDonors(pool, kind, choice.id).length > 0);
+  }).filter((choice) => {
+    if (hideUnknown && kind === "rarities") return !atCategoryMax(kind, choice.id);
+    return choice.count > 0 || openDonors(pool, kind, choice.id).length > 0;
+  });
   if (hideUnknown) return rows;
   const unknownFacts = Object.assign({}, parent);
   writeDetailFact(unknownFacts, kind, "unknown");
@@ -2120,8 +2152,9 @@ function renderEstimate() {
     : min === max
       ? formatCoins(min)
       : `${formatCoins(min)} – ${formatCoins(max)}`;
-  const average = (min + max) / 2;
-  $("#recommended-bid").textContent = formatCoins(Math.round(average * 0.4));
+  const quote = catalogWorthParts(state.board, state.data, false, true);
+  const basis = quote.known + quote.unknown;
+  $("#recommended-bid").textContent = formatCoins(basis > 0 ? Math.round(basis * 1.5) : 0);
 }
 
 function renderExact() {
@@ -2252,9 +2285,14 @@ function houseRange(data, houseId) {
 }
 
 function catalogWorth(board, data, pickMax) {
+  return catalogWorthParts(board, data, pickMax, false).total;
+}
+
+function catalogWorthParts(board, data, pickMax, includeUnlisted) {
   const treasures = data.treasures || [];
-  const slots = estimateSlots(board);
-  if (!slots.length || !treasures.length) return 0;
+  const slots = estimateSlots(board, includeUnlisted);
+  const empty = { known: 0, unknown: 0, total: 0 };
+  if (!slots.length || !treasures.length) return empty;
   const rooms = openRooms(board, data);
   const range = houseRange(data, board.house);
   const byPrice = (left, right) => {
@@ -2277,7 +2315,8 @@ function catalogWorth(board, data, pickMax) {
     }))
     .sort((left, right) => left.choices - right.choices || left.index - right.index);
   const used = new Set();
-  return ordered.reduce((sum, entry) => {
+  const parts = { known: 0, unknown: 0 };
+  ordered.forEach((entry) => {
     if (entry.slot.exactPrice != null) {
       const claimed = items.find((catalogItem) => {
         if (used.has(catalogItem.index)) return false;
@@ -2285,20 +2324,28 @@ function catalogWorth(board, data, pickMax) {
         return Number(catalogItem.price) === entry.slot.exactPrice && matchesFacts(catalogItem, entry.slot);
       });
       if (claimed) used.add(claimed.index);
-      return sum + entry.slot.exactPrice;
+      addWorth(parts, entry.slot, entry.slot.exactPrice);
+      return;
     }
     const pool = slotPool(entry.slot);
     const taken = takeItem(pool, used, entry.slot, rooms) ||
       (pool === items ? null : takeItem(items, used, entry.slot, rooms));
-    if (!taken) return sum;
+    if (!taken) return;
     used.add(taken.item.index);
     spend(taken.item, taken.slot, rooms);
-    return sum + taken.item.price;
-  }, 0);
+    addWorth(parts, entry.slot, taken.item.price);
+  });
+  parts.total = parts.known + parts.unknown;
+  return parts;
 }
 
-function estimateSlots(board) {
-  const active = usesMaxConstraint(board);
+function addWorth(parts, slot, price) {
+  if (slot.unlisted) parts.unknown += price;
+  else parts.known += price;
+}
+
+function estimateSlots(board, includeUnlisted) {
+  const active = usesMaxConstraint(board) || includeUnlisted;
   const slots = [];
   (board.items || []).forEach((item) => {
     const exact = exactTreasure(item);
@@ -2323,7 +2370,7 @@ function estimateSlots(board) {
   const unlisted = Math.max(0, board.treasureTotal - (board.items || []).length);
   const fillers = Math.min(unlisted, 60);
   for (let index = 0; index < fillers; index += 1) {
-    slots.push({ rarity: null, type: null, size: null });
+    slots.push({ rarity: null, type: null, size: null, unlisted: true });
   }
   return slots;
 }
@@ -2659,5 +2706,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=143").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=153").catch(() => {});
 }
