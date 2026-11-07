@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=160"),
-      fetch("data/treasures.json?v=160")
+      fetch("data/auction.json?v=163"),
+      fetch("data/treasures.json?v=163")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -2248,7 +2248,7 @@ function recommendationWorth(board, data) {
       priced += Number(item.price);
       return;
     }
-    if (hasTypeOrSize(item)) {
+    if (hasTypeOrSize(item) && item.rarity && item.rarity !== "unknown") {
       specific += lowestPossibleWorth(board, data, item, counts);
       return;
     }
@@ -2308,13 +2308,13 @@ function unknownColorWorth(board, data, mins, remaining) {
   if (remaining <= 0) return 0;
   const counts = tally(board.items || [], data);
   const capped = [];
-  const openMins = [];
+  const open = [];
   ((data && data.rarities) || []).forEach((entry) => {
     const id = entry.id;
     if (!id || id === "unknown" || mins[id] == null) return;
     const max = board.maxCounts?.rarities?.[id];
     if (!Number.isInteger(max)) {
-      openMins.push(mins[id]);
+      open.push({ id, min: mins[id] });
       return;
     }
     const room = max - (counts.rarities?.[id] || 0);
@@ -2329,11 +2329,23 @@ function unknownColorWorth(board, data, mins, remaining) {
     worth += entry.min * 3 * take;
     left -= take;
   });
-  if (left > 0 && openMins.length) {
-    const average = openMins.reduce((sum, min) => sum + min, 0) / openMins.length;
-    worth += average * 3 * left;
+  if (left > 0 && open.length) {
+    worth += weightedColorMinimum(data, open) * 3 * left;
   }
   return worth;
+}
+
+function weightedColorMinimum(data, open) {
+  const order = ((data && data.rarities) || []).map((entry) => entry.id).filter((id) => id && id !== "unknown");
+  let total = 0;
+  let weight = 0;
+  open.forEach((entry) => {
+    const index = order.indexOf(entry.id);
+    const scale = index < 0 ? 1 : 2 ** (order.length - 1 - index);
+    total += entry.min;
+    weight += scale;
+  });
+  return weight ? total / weight : 0;
 }
 
 function rarityMinimums(data) {
@@ -2900,5 +2912,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=160").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=163").catch(() => {});
 }
