@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=157"),
-      fetch("data/treasures.json?v=157")
+      fetch("data/auction.json?v=160"),
+      fetch("data/treasures.json?v=160")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1362,11 +1362,21 @@ function onSummaryClick(event) {
   const next = { kind: button.dataset.open, id: button.dataset.id };
   const same = state.selected && state.selected.kind === next.kind && state.selected.id === next.id;
   state.selected = same ? null : next;
-  state.detailOpen = null;
+  state.detailOpen = state.selected && state.selected.id === "unknown"
+    ? (blockingKind(state.selected.kind) || state.selected.kind)
+    : null;
   render();
 }
 
 function onDetailClick(event) {
+  const choose = event.target.closest("[data-choose]");
+  if (choose) {
+    const from = state.selected && state.selected.kind;
+    state.selected = { kind: choose.dataset.choose, id: choose.dataset.id };
+    state.detailOpen = from && from !== choose.dataset.choose ? from : null;
+    render();
+    return;
+  }
   const adjust = event.target.closest("[data-adjust]");
   if (adjust) {
     adjustDetail(adjust);
@@ -1434,7 +1444,7 @@ function adjustChild(facts, field, id, delta) {
 }
 
 function increaseChild(facts, field, id) {
-  if (atCategoryMax(field, id)) return false;
+  if (atCategoryMax(field, id) || blockedByMaxedCategory(facts)) return false;
   const open = openDonors(facts, field, id)
     .sort((left, right) => detailSpecificity(left) - detailSpecificity(right));
   if (open.length) {
@@ -1703,7 +1713,7 @@ function canDecrease(facts, field, id) {
 }
 
 function canAssign(facts, field, id) {
-  if (id === "unknown" || atCategoryMax(field, id)) return false;
+  if (id === "unknown" || atCategoryMax(field, id) || blockedByMaxedCategory(facts)) return false;
   const pool = Object.assign({}, facts);
   writeDetailFact(pool, field, "unknown");
   if (openDonors(pool, field, id).length > 0) return true;
@@ -1730,6 +1740,28 @@ function freshFacts(facts, field, id) {
   };
   if (!catalogSupports(probe)) return null;
   return probe;
+}
+
+function blockedByMaxedCategory(facts) {
+  return ["rarities", "types", "sizes"].some((kind) => fullyMaxedKind(kind) && !factSpecified(facts, kind));
+}
+
+function blockingKind(selectedKind) {
+  return ["rarities", "types", "sizes"].find((kind) => kind !== selectedKind && fullyMaxedKind(kind)) || null;
+}
+
+function fullyMaxedKind(kind) {
+  if (!state.board || unknownCount(state.board, kind) > 0) return false;
+  const counts = tally(state.board.items, state.data);
+  const ids = Object.keys(counts[kind] || {}).filter((id) => counts[kind][id] > 0);
+  return ids.length > 0 && ids.every((id) => atCategoryMax(kind, id));
+}
+
+function factSpecified(facts, kind) {
+  if (!facts) return false;
+  if (kind === "rarities") return Boolean(facts.rarity && facts.rarity !== "unknown");
+  if (kind === "types") return Boolean(facts.type && facts.type !== "unknown");
+  return facts.size != null && facts.size !== "";
 }
 
 function factKind(field) {
@@ -1827,6 +1859,13 @@ function renderDetail() {
   const levels = detailLevels(state.selected);
   const parent = parentFacts(state.selected);
   levels.forEach((field) => {
+    if (asksForChoice(field)) {
+      const row = document.createElement("li");
+      row.className = "detail-cat is-open";
+      row.appendChild(choicePrompt(field));
+      list.appendChild(row);
+      return;
+    }
     const sizeLocked = field === "sizes" && parent.type === "collection";
     const filled = filledCount(parent, field);
     const open = state.detailOpen === field && !sizeLocked;
@@ -1859,6 +1898,42 @@ function renderDetail() {
     list.appendChild(row);
   });
   if (!unknown && items.length) appendItemEditors(list, items);
+}
+
+function asksForChoice(field) {
+  return isUnknownSelection(state.selected) && fullyMaxedKind(field) && field !== state.selected.kind;
+}
+
+function choicePrompt(field) {
+  const wrap = document.createElement("div");
+  wrap.className = "choice-ask";
+  const question = document.createElement("p");
+  question.className = "choice-question";
+  question.textContent = `Which ${choiceNoun(field)} do you want to add a ${choiceNoun(state.selected.kind)} to?`;
+  const choices = document.createElement("div");
+  choices.className = "choice-options";
+  rowsFor(field, parentFacts(state.selected), false).forEach((choice) => {
+    if (choice.id === "unknown") return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip is-on";
+    button.dataset.choose = field;
+    button.dataset.id = choice.id;
+    button.textContent = choice.label;
+    if (choice.color) {
+      button.style.setProperty("--chip", choice.color);
+      button.style.setProperty("--chip-ink", choice.ink || "#1b1e26");
+    }
+    choices.appendChild(button);
+  });
+  wrap.append(question, choices);
+  return wrap;
+}
+
+function choiceNoun(kind) {
+  if (kind === "rarities") return "color";
+  if (kind === "types") return "type";
+  return "size";
 }
 
 function appendItemEditors(list, items) {
@@ -2085,7 +2160,7 @@ function rowsFor(kind, parent, hideUnknown) {
     writeDetailFact(facts, kind, choice.id);
     return Object.assign({}, choice, { count: countFacts(facts) });
   }).filter((choice) => {
-    if (hideUnknown && kind === "rarities") return !atCategoryMax(kind, choice.id);
+    if (hideUnknown) return !atCategoryMax(kind, choice.id);
     return choice.count > 0 || openDonors(pool, kind, choice.id).length > 0;
   });
   if (hideUnknown) return rows;
@@ -2825,5 +2900,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=157").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=160").catch(() => {});
 }
