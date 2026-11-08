@@ -518,11 +518,16 @@ legend {
 .rarity-open {
   padding: 2px 8px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #e4b15a, #ff8d86);
-  color: #2a100e;
-  font-weight: 750;
+  background: #c9a6ff;
+  color: #1c1028;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.rarity-open.is-hot {
+  background: linear-gradient(90deg, #e4b15a, #ff8d86);
+  color: #2a100e;
   animation: rarity-flash 1.4s ease-in-out infinite;
 }
 
@@ -532,7 +537,7 @@ legend {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rarity-open { animation: none; }
+  .rarity-open.is-hot { animation: none; }
 }
 
 .chips {

@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=170"),
-      fetch("data/treasures.json?v=170")
+      fetch("data/auction.json?v=174"),
+      fetch("data/treasures.json?v=174")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1267,9 +1267,9 @@ function atCategoryMax(kind, id) {
   if (!state.board || id == null || id === "" || id === "unknown") return false;
   const key = kind === "sizes" ? sizeKey(id) : String(id);
   const max = state.board.maxCounts?.[kind]?.[key];
-  if (!Number.isInteger(max)) return false;
   const counts = tally(state.board.items, state.data);
-  return (counts[kind]?.[key] || 0) >= max;
+  if (Number.isInteger(max) && (counts[kind]?.[key] || 0) >= max) return true;
+  return kind === "rarities" && goldOrRedClosed(key, counts);
 }
 
 function assigningWouldExceed(kind, id, item) {
@@ -1328,6 +1328,15 @@ function additionPastMax(specs) {
         const label = kind === "rarities" ? rarityName(id) : kind === "types" ? typeName(id) : sizeLabel(id);
         return { label, count, max };
       }
+    }
+  }
+  const lower = ["gray", "green", "blue", "purple"];
+  if (Number.isInteger(state.board.treasureTotal) && lower.every((id) => Number.isInteger(maxes.rarities[id]))) {
+    const allowance = state.board.treasureTotal - lower.reduce((sum, id) => sum + maxes.rarities[id], 0);
+    const projected = (counts.rarities.gold || 0) + (counts.rarities.red || 0);
+    if (projected > allowance) {
+      const id = added.rarities.red && !added.rarities.gold ? "red" : "gold";
+      return { label: rarityName(id), count: projected, max: Math.max(0, allowance) };
     }
   }
   return null;
@@ -1567,7 +1576,7 @@ function endGame() {
 }
 
 function render() {
-  if (resolveUnknown() || resolveExactItems()) persist();
+  if (resolveUnknown() || assignOnlyPossibleRarity() || resolveExactItems()) persist();
   const house = state.data.houses.find((entry) => entry.id === state.board.house);
   const houseName = $("#house-name");
   if (houseName) houseName.textContent = house ? house.name : "";
@@ -1702,30 +1711,89 @@ function knownRarityCount(board, id) {
   return Number.isInteger(max) ? max : null;
 }
 
+function goldRedAllowance(board) {
+  if (!board || !Number.isInteger(board.treasureTotal)) return null;
+  const maxes = board.maxCounts?.rarities || {};
+  const lower = ["gray", "green", "blue", "purple"];
+  if (!lower.every((id) => Number.isInteger(maxes[id]))) return null;
+  return board.treasureTotal - lower.reduce((sum, id) => sum + maxes[id], 0);
+}
+
+function goldOrRedClosed(id, counts) {
+  if (id !== "gold" && id !== "red") return false;
+  const allowance = goldRedAllowance(state.board);
+  if (allowance == null) return false;
+  const taken = (counts.rarities.gold || 0) + (counts.rarities.red || 0);
+  return taken >= allowance;
+}
+
+function assignOnlyPossibleRarity() {
+  const board = state.board;
+  if (!board || !state.data) return false;
+  const allowance = goldRedAllowance(board);
+  if (allowance == null) return false;
+  const counts = tally(board.items, state.data);
+  const taken = (counts.rarities.gold || 0) + (counts.rarities.red || 0);
+  if (taken < allowance) return false;
+  const maxes = board.maxCounts.rarities || {};
+  const open = ["gray", "green", "blue", "purple"].filter((id) => {
+    return Number.isInteger(maxes[id]) && (counts.rarities[id] || 0) < maxes[id];
+  });
+  if (open.length !== 1) return false;
+  const color = open[0];
+  const room = maxes[color] - (counts.rarities[color] || 0);
+  const missing = board.items.filter((item) => (!item.rarity || item.rarity === "unknown") && !exactTreasure(item));
+  if (!missing.length || missing.length > room) return false;
+  const fits = missing.every((item) => catalogSupports({
+    rarity: color,
+    type: item.type && item.type !== "unknown" ? item.type : "",
+    size: item.size == null || item.size === "" ? null : item.size
+  }));
+  if (!fits) return false;
+  missing.forEach((item) => {
+    item.rarity = color;
+  });
+  if (state.selected && state.selected.kind === "rarities" && (state.selected.id === "unknown" || state.selected.id === color)) {
+    state.selected = { kind: "rarities", id: color };
+  }
+  return true;
+}
+
 function renderRarityLegend(counts) {
   const knownNode = $("#rarity-known");
   const openNode = $("#rarity-open");
   if (!knownNode || !openNode || !state.board) return;
-  const known = ["gray", "green", "blue", "purple", "gold", "red"].reduce((sum, id) => sum + (counts.rarities[id] || 0), 0);
+  const order = ["gray", "green", "blue", "purple", "gold", "red"];
+  const maxes = state.board.maxCounts.rarities || {};
+  const known = order.reduce((sum, id) => {
+    const count = counts.rarities[id] || 0;
+    return sum + (Number.isInteger(maxes[id]) ? Math.max(count, maxes[id]) : count);
+  }, 0);
   const total = state.board.treasureTotal;
   knownNode.textContent = Number.isInteger(total) ? `${known}/${total}` : String(known);
   knownNode.setAttribute("aria-label", Number.isInteger(total)
-    ? `${known} of ${total} treasures have a known rarity`
-    : `${known} treasures have a known rarity`);
-  const base = ["gray", "green", "blue", "purple"];
-  const maxes = state.board.maxCounts.rarities || {};
-  const capped = base.every((id) => Number.isInteger(maxes[id]));
+    ? `${known} of ${total} treasures have a known rarity count`
+    : `${known} treasures have a known rarity count`);
+  const lower = ["gray", "green", "blue"];
+  const purpleKnown = Number.isInteger(maxes.purple);
+  const capped = (purpleKnown ? lower.concat("purple") : lower).every((id) => Number.isInteger(maxes[id]));
   const room = capped && Number.isInteger(total)
-    ? total - base.reduce((sum, id) => sum + maxes[id], 0)
+    ? total - (purpleKnown ? lower.concat("purple") : lower).reduce((sum, id) => sum + maxes[id], 0)
     : null;
-  if (room == null || room < 0) {
+  if (room == null || room <= 0) {
     openNode.hidden = true;
     openNode.textContent = "";
+    openNode.classList.remove("is-hot");
     return;
   }
   openNode.hidden = false;
-  openNode.textContent = `${room} gold or red`;
-  openNode.setAttribute("aria-label", `${room} treasures can be gold or red`);
+  openNode.classList.toggle("is-hot", purpleKnown);
+  openNode.style.background = "";
+  openNode.style.color = "";
+  openNode.textContent = purpleKnown ? `${room} gold or red` : `${room} purple or better`;
+  openNode.setAttribute("aria-label", purpleKnown
+    ? `${room} treasures can be gold or red`
+    : `${room} treasures are purple or better`);
 }
 
 function renderTreasureTotal() {
@@ -3051,5 +3119,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=170").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=174").catch(() => {});
 }
