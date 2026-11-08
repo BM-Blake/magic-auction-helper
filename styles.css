@@ -750,6 +750,7 @@ legend {
 .step-row.is-open > .step-children { grid-column: 1 / -1; }
 
 .choice-ask { grid-column: 1 / -1; }
+.choice-ask + .choice-ask { margin-top: 14px; }
 
 .choice-question {
   margin: 0 0 8px;
@@ -925,7 +926,29 @@ select.group-use {
   font-size: 16px;
 }
 
-.entry-head .text-btn { margin-left: auto; }
+.johnson-note { margin: 0 0 10px; }
+
+.johnson-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.johnson-row .field { margin-top: 0; }
+
+.johnson-name { font-weight: 700; }
+
+.johnson-counts input[type="number"] {
+  text-align: center;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.johnson-counts input[type="number"]::-webkit-outer-spin-button,
+.johnson-counts input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 
 .cat-row {
   display: grid;

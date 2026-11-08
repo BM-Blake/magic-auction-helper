@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=164"),
-      fetch("data/treasures.json?v=164")
+      fetch("data/auction.json?v=167"),
+      fetch("data/treasures.json?v=167")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -199,9 +199,67 @@ function renderGroups() {
   const root = $("#groups");
   if (!root || !state.data) return;
   root.replaceChildren();
-  state.groups.forEach((group, index) => {
-    root.appendChild(buildGroupElement(group, index));
+  let index = 0;
+  if (isJohnsonTrio(state.groups)) {
+    root.appendChild(buildJohnsonCard(state.groups.slice(0, 3)));
+    index = 3;
+  }
+  for (; index < state.groups.length; index += 1) {
+    root.appendChild(buildGroupElement(state.groups[index], index));
+  }
+}
+
+function isJohnsonTrio(groups) {
+  const colors = ["gray", "green", "blue"];
+  if (!groups || groups.length < 3) return false;
+  return colors.every((color, index) => {
+    const group = groups[index];
+    return group
+      && group.rarity === color
+      && !group.type
+      && !group.size
+      && !String(group.price || "").trim()
+      && group.use === "both"
+      && !(group.details || []).length
+      && !group.open;
   });
+}
+
+function buildJohnsonCard(groups) {
+  const entry = document.createElement("div");
+  entry.className = "entry johnson-counts";
+  const note = document.createElement("p");
+  note.className = "hint johnson-note";
+  note.textContent = "Each number is how many there are, and their maximum.";
+  const row = document.createElement("div");
+  row.className = "johnson-row";
+  groups.forEach((group, index) => {
+    const rarity = state.data.rarities.find((item) => item.id === group.rarity);
+    const label = document.createElement("label");
+    label.className = "field";
+    label.dataset.group = String(index);
+    const name = document.createElement("span");
+    name.className = "johnson-name";
+    name.textContent = rarity ? rarity.name : group.rarity;
+    if (rarity) name.style.color = rarity.color;
+    const input = document.createElement("input");
+    input.className = "group-count";
+    input.type = "number";
+    input.min = "1";
+    input.step = "1";
+    input.inputMode = "numeric";
+    input.autocomplete = "off";
+    input.enterKeyHint = index === groups.length - 1 ? "done" : "next";
+    input.value = group.count;
+    input.setAttribute("aria-label", rarity ? rarity.name : group.rarity);
+    input.addEventListener("wheel", (event) => {
+      event.preventDefault();
+    }, { passive: false });
+    label.append(name, input);
+    row.appendChild(label);
+  });
+  entry.append(note, row);
+  return entry;
 }
 
 function buildGroupElement(group, index) {
@@ -994,6 +1052,10 @@ function onSheetInput(event) {
   if (!group) return;
   if (event.target.classList.contains("group-count")) {
     group.count = event.target.value;
+    if (event.target.closest(".johnson-counts")) {
+      hideError();
+      return;
+    }
     const index = entry.dataset.group;
     const caret = event.target.selectionStart;
     rerenderGroups();
@@ -1037,7 +1099,7 @@ function syncCategoryPanels(entry, group) {
 }
 
 function captureInputs() {
-  document.querySelectorAll("#groups .entry").forEach((entry) => {
+  document.querySelectorAll("#groups [data-group]").forEach((entry) => {
     const group = state.groups[Number(entry.dataset.group)];
     if (!group) return;
     const count = entry.querySelector(".group-count");
@@ -1775,6 +1837,8 @@ function openDonors(facts, field, id) {
     if (!itemMatches(item, facts) || !childUnset(item, field) || exactTreasure(item)) return false;
     if (field === "sizes" && item.type === "collection") return false;
     if (field !== "rarities" && !factSpecified(facts, "rarities") && item.rarity && item.rarity !== "unknown") return false;
+    if (field !== "types" && !factSpecified(facts, "types") && item.type && item.type !== "unknown") return false;
+    if (field !== "sizes" && !factSpecified(facts, "sizes") && item.size != null && item.size !== "") return false;
     return catalogSupports(choiceFacts(item, factKind(field), id));
   });
 }
@@ -1860,6 +1924,17 @@ function renderDetail() {
   const levels = detailLevels(state.selected);
   const parent = parentFacts(state.selected);
   levels.forEach((field) => {
+    if (field === state.selected.kind && needsAnchorChoice(field)) {
+      const row = document.createElement("li");
+      row.className = "detail-cat is-open";
+      anchorFields(field).forEach((other) => {
+        const options = anchorOptions(other);
+        if (!options.length) return;
+        row.appendChild(choicePrompt(other, options));
+      });
+      list.appendChild(row);
+      return;
+    }
     if (asksForChoice(field)) {
       const row = document.createElement("li");
       row.className = "detail-cat is-open";
@@ -1905,7 +1980,31 @@ function asksForChoice(field) {
   return isUnknownSelection(state.selected) && fullyMaxedKind(field) && field !== state.selected.kind;
 }
 
-function choicePrompt(field) {
+function needsAnchorChoice(field) {
+  if (!isUnknownSelection(state.selected) || state.selected.kind !== field) return false;
+  if (slotsLeft() > 0 || hasBlankDonor(field)) return false;
+  return anchorFields(field).some((other) => anchorOptions(other).length > 0);
+}
+
+function anchorFields(field) {
+  return ["rarities", "types", "sizes"].filter((kind) => kind !== field);
+}
+
+function hasBlankDonor(field) {
+  return state.board.items.some((item) => {
+    if (!childUnset(item, field) || exactTreasure(item)) return false;
+    if (field === "sizes" && item.type === "collection") return false;
+    if (item.rarity && item.rarity !== "unknown") return false;
+    if (item.type && item.type !== "unknown") return false;
+    return item.size == null || item.size === "";
+  });
+}
+
+function anchorOptions(kind) {
+  return rowsFor(kind, parentFacts(state.selected), false).filter((choice) => choice.id !== "unknown");
+}
+
+function choicePrompt(field, options) {
   const wrap = document.createElement("div");
   wrap.className = "choice-ask";
   const question = document.createElement("p");
@@ -1913,7 +2012,7 @@ function choicePrompt(field) {
   question.textContent = `Which ${choiceNoun(field)} do you want to add a ${choiceNoun(state.selected.kind)} to?`;
   const choices = document.createElement("div");
   choices.className = "choice-options";
-  rowsFor(field, parentFacts(state.selected), false).forEach((choice) => {
+  (options || rowsFor(field, parentFacts(state.selected), false)).forEach((choice) => {
     if (choice.id === "unknown") return;
     const button = document.createElement("button");
     button.type = "button";
@@ -2913,5 +3012,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=164").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=167").catch(() => {});
 }
