@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=163"),
-      fetch("data/treasures.json?v=163")
+      fetch("data/auction.json?v=164"),
+      fetch("data/treasures.json?v=164")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1774,6 +1774,7 @@ function openDonors(facts, field, id) {
   return state.board.items.filter((item) => {
     if (!itemMatches(item, facts) || !childUnset(item, field) || exactTreasure(item)) return false;
     if (field === "sizes" && item.type === "collection") return false;
+    if (field !== "rarities" && !factSpecified(facts, "rarities") && item.rarity && item.rarity !== "unknown") return false;
     return catalogSupports(choiceFacts(item, factKind(field), id));
   });
 }
@@ -2912,5 +2913,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=163").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=164").catch(() => {});
 }
