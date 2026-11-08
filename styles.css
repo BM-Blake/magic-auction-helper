@@ -857,8 +857,8 @@ legend {
   z-index: 3;
   left: max(16px, calc(50% - 240px + 16px));
   right: max(16px, calc(50% - 240px + 16px));
-  bottom: calc(84px + var(--safe-bottom));
-  max-height: min(78vh, 720px);
+  top: calc(72px + var(--safe-top));
+  max-height: calc(100vh - 168px - var(--safe-top) - var(--safe-bottom));
   overflow: auto;
   overscroll-behavior: contain;
   margin: 0;
