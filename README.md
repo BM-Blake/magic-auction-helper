@@ -6,15 +6,20 @@ Live page: https://bm-blake.github.io/magic-auction-helper/
 
 ## What it tracks
 
-- The auction house: Eruditio, Dawnlight, World, or Cosmic
+- A hero and an auction house: Eruditio, Dawnlight, World, or Cosmic
 - Revealed treasures by rarity, type, and size
 - Exact prices the game has shown
 - A treasure total and maximum counts
 - An estimate of worth from the treasure catalog
+- Three bids under Recommendations: highest profit, calculated risk at 1.3 times that bid, and never more than at 1.5 times that bid
 
 The Magic Auction database lists the catalog treasures and filters them by name, rarity, type, and size.
 
 A treasure with a missing rarity, type, or size stays under Unknown until that detail is filled in. Opening a rarity, type, or size lists the treasures in that group, so each one can keep its own price and other details.
+
+## User manual
+
+On the menu, the book in the top-right corner of the screen opens the guide. The same text is in [MANUAL.md](MANUAL.md).
 
 ## Use it offline
 
