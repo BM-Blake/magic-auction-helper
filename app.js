@@ -25,8 +25,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=214"),
-      fetch("data/treasures.json?v=214")
+      fetch("data/auction.json?v=216"),
+      fetch("data/treasures.json?v=216")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -465,7 +465,7 @@ function buildJohnsonCard(groups) {
     const input = document.createElement("input");
     input.className = "group-count";
     input.type = "number";
-    input.min = "1";
+    input.min = "0";
     input.step = "1";
     input.inputMode = "numeric";
     input.autocomplete = "off";
@@ -496,7 +496,7 @@ function buildGroupElement(group, index) {
   const countInput = document.createElement("input");
   countInput.className = "group-count";
   countInput.type = "number";
-  countInput.min = "1";
+  countInput.min = "0";
   countInput.step = "1";
   countInput.inputMode = "numeric";
   countInput.autocomplete = "off";
@@ -1373,10 +1373,14 @@ function onAdd(event) {
     const group = state.groups[index];
     const count = parseCount(group.count);
     if (count == null) {
-      showError("Enter a whole number of at least 1 for each group.");
+      showError("Enter a whole number for each group.");
       return;
     }
     const use = group.use === "max" || group.use === "both" ? group.use : "known";
+    if (count === 0 && use === "known") {
+      showError("Enter at least 1, or choose Max to record that none are possible.");
+      return;
+    }
     const prices = use === "max" ? { prices: [] } : parsePriceList(group.price);
     if (prices.error) {
       showError(prices.error);
@@ -1423,6 +1427,10 @@ function onAdd(event) {
       showError("Choose a rarity, type, or size to save the count and the max together.");
       return;
     }
+    if (count === 0 && picks.length === 0) {
+      showError("Choose a rarity, type, or size for a maximum of 0.");
+      return;
+    }
     parsed.push(spec);
   }
 
@@ -1465,7 +1473,9 @@ function applyMaxes(specs) {
   specs.forEach((spec) => {
     categoryPicks(spec).forEach((picked) => {
       const current = state.board.maxCounts[picked.kind][picked.id];
-      state.board.maxCounts[picked.kind][picked.id] = Number.isInteger(current) ? current + spec.count : spec.count;
+      state.board.maxCounts[picked.kind][picked.id] = spec.count === 0
+        ? 0
+        : Number.isInteger(current) ? current + spec.count : spec.count;
     });
   });
 }
@@ -1540,11 +1550,15 @@ function additionPastMax(specs) {
     const picks = categoryPicks(spec);
     if (spec.use === "max" || spec.use === "both") {
       picks.forEach((picked) => {
+        if (spec.count === 0) {
+          maxes[picked.kind][picked.id] = 0;
+          return;
+        }
         const current = maxes[picked.kind][picked.id];
         maxes[picked.kind][picked.id] = Number.isInteger(current) ? current + spec.count : spec.count;
       });
     }
-    if (spec.use === "max") return;
+    if (spec.use === "max" || spec.count === 0) return;
     const listed = spec.details || [];
     for (let index = 0; index < spec.count; index += 1) {
       const detail = index < listed.length ? listed[index] : null;
@@ -1555,6 +1569,14 @@ function additionPastMax(specs) {
     }
   });
   for (const kind of ["rarities", "types", "sizes"]) {
+    for (const id of Object.keys(maxes[kind])) {
+      if (maxes[kind][id] !== 0) continue;
+      const count = counts[kind][id] || 0;
+      if (count > 0) {
+        const label = kind === "rarities" ? rarityName(id) : kind === "types" ? typeName(id) : sizeLabel(id);
+        return { label, count, max: 0 };
+      }
+    }
     for (const id of Object.keys(added[kind])) {
       const max = maxes[kind][id];
       const count = counts[kind][id] || 0;
@@ -1652,7 +1674,7 @@ function parseCount(raw) {
   const text = String(raw ?? "").trim();
   if (!/^\d+$/.test(text)) return null;
   const value = Number(text);
-  if (!Number.isInteger(value) || value < 1) return null;
+  if (!Number.isInteger(value) || value < 0) return null;
   return value;
 }
 
@@ -2840,20 +2862,48 @@ function renderEstimate() {
     : min === max
       ? formatCoins(min)
       : `${formatCoins(min)} – ${formatCoins(max)}`;
-  const bid = recommendedBid(state.board, state.data);
-  $("#recommended-bid").textContent = formatCoins(bid);
-  $("#bid-risk").textContent = formatCoins(Math.round(bid * 1.3));
-  $("#bid-cap").textContent = formatCoins(Math.round(bid * 1.5));
+  const bids = recommendationBids(state.board, state.data);
+  $("#recommended-bid").textContent = formatCoins(bids.profit);
+  $("#bid-risk").textContent = formatCoins(bids.risk);
+  $("#bid-cap").textContent = formatCoins(bids.cap);
 }
 
-function recommendedBid(board, data) {
-  const worth = recommendationWorth(board, data);
-  return worth > 0 ? Math.round(worth * 0.9) : 0;
+const HOUSE_ITEM_COUNTS = {
+  eruditio: { low: 10, high: 24 }
+};
+
+function recommendationBids(board, data) {
+  const band = houseItemBand(board);
+  if (band) {
+    return {
+      profit: bidFromWorth(recommendationWorth(board, data, band.low)),
+      risk: bidFromWorth(recommendationWorth(board, data, band.mid)),
+      cap: bidFromWorth(recommendationWorth(board, data, band.high))
+    };
+  }
+  const bid = bidFromWorth(recommendationWorth(board, data));
+  return { profit: bid, risk: Math.round(bid * 1.3), cap: Math.round(bid * 1.5) };
 }
 
-function recommendationWorth(board, data) {
+function houseItemBand(board) {
+  const band = board && HOUSE_ITEM_COUNTS[board.house];
+  if (!band) return null;
+  const total = board.treasureTotal;
+  if (Number.isInteger(total) && total > 0) return null;
+  const logged = (board.items || []).length;
+  const high = Math.max(band.high, logged);
+  const low = Math.min(band.low, high);
+  return { low, mid: Math.round((low + high) / 2), high };
+}
+
+function bidFromWorth(worth) {
+  return worth > 0 ? Math.round(worth * 0.8) : 0;
+}
+
+function recommendationWorth(board, data, total) {
   if (!board) return 0;
-  const mins = rarityMinimums(data);
+  const sized = Number.isInteger(total) ? Object.assign({}, board, { treasureTotal: total }) : board;
+  const mins = rarityMinimums(data, sized);
   const counts = tally(board.items || [], data);
   let priced = 0;
   let specific = 0;
@@ -2877,8 +2927,8 @@ function recommendationWorth(board, data) {
   const rarityWorth = Object.entries(rarityCounts).reduce((sum, [rarity, count]) => {
     return sum + mins[rarity] * 3 * count;
   }, 0);
-  const remaining = colorless + unlistedSlots(board);
-  return priced + specific + rarityWorth + unknownColorWorth(board, data, mins, remaining);
+  const remaining = colorless + unlistedSlots(sized);
+  return priced + specific + rarityWorth + unknownColorWorth(sized, data, mins, remaining);
 }
 
 function hasTypeOrSize(item) {
@@ -2964,14 +3014,28 @@ function weightedColorMinimum(data, open) {
   return weight ? total / weight : 0;
 }
 
-function rarityMinimums(data) {
+function rarityMinimums(data, board) {
   const mins = {};
+  const counts = board ? tally(board.items || [], data) : null;
   ((data && data.treasures) || []).forEach((treasure) => {
     const price = Number(treasure.price);
     if (!treasure.rarity || treasure.rarity === "unknown" || !Number.isFinite(price)) return;
+    if (counts && treasureExcluded(board, counts, treasure)) return;
     if (mins[treasure.rarity] == null || price < mins[treasure.rarity]) mins[treasure.rarity] = price;
   });
   return mins;
+}
+
+function treasureExcluded(board, counts, treasure) {
+  if (typeClosed(board, counts, treasure.type)) return true;
+  const shape = treasureShape(treasure) || (treasure.size == null ? "" : sizeKey(treasure.size));
+  return Boolean(shape && categoryClosed(board, counts, "sizes", shape));
+}
+
+function typeClosed(board, counts, type) {
+  if (!type) return false;
+  if (categoryClosed(board, counts, "types", type)) return true;
+  return (type === "figurine" || type === "collection") && categoryClosed(board, counts, "types", "collection");
 }
 
 function unlistedSlots(board) {
@@ -3253,6 +3317,9 @@ function matchingTreasures(item) {
     if (item.type && !typeMatches(treasure.type, item.type)) return false;
     if (item.size != null && !treasureMatchesSize(treasure, item.size)) return false;
     if (rarityOpen && atCategoryMax("rarities", treasure.rarity)) return false;
+    if ((!item.type || item.type === "unknown") && typeAtMax(treasure.type)) return false;
+    const shape = treasureShape(treasure) || (treasure.size == null ? "" : sizeKey(treasure.size));
+    if ((item.size == null || item.size === "") && shape && atCategoryMax("sizes", shape)) return false;
     return true;
   }).sort((left, right) => left.name.localeCompare(right.name));
 }
@@ -3340,13 +3407,26 @@ function renderKnown() {
   });
 }
 
+function typeAtMax(type) {
+  if (!type) return false;
+  if (atCategoryMax("types", type)) return true;
+  return (type === "figurine" || type === "collection") && atCategoryMax("types", "collection");
+}
+
 function catalogSupports(facts) {
   const treasures = state.data && state.data.treasures;
   if (!Array.isArray(treasures) || !treasures.length) return true;
+  if (facts.rarity && atCategoryMax("rarities", facts.rarity)) return false;
+  if (facts.type && typeAtMax(facts.type)) return false;
+  if (facts.size != null && facts.size !== "" && atCategoryMax("sizes", facts.size)) return false;
   return treasures.some((treasure) => {
     if (facts.rarity && treasure.rarity !== facts.rarity) return false;
     if (facts.type && !typeMatches(treasure.type, facts.type)) return false;
     if (facts.size != null && !treasureMatchesSize(treasure, facts.size)) return false;
+    if (!facts.rarity && atCategoryMax("rarities", treasure.rarity)) return false;
+    if (!facts.type && typeAtMax(treasure.type)) return false;
+    const shape = treasureShape(treasure) || (treasure.size == null ? "" : sizeKey(treasure.size));
+    if ((facts.size == null || facts.size === "") && shape && atCategoryMax("sizes", shape)) return false;
     return true;
   });
 }
@@ -3530,5 +3610,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=214").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=216").catch(() => {});
 }

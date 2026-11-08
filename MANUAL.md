@@ -22,7 +22,7 @@ A chip appears when that rarity, type, or size has a count. Tap it to open those
 
 ## Worth and bids
 
-Estimate worth is a range from the treasure catalog. Under Recommendations, Highest profit is the suggested bid. Calculated risk is 1.3 times that bid. Never more than is 1.5 times that bid.
+Estimate worth is a range from the treasure catalog. Highest profit is 80% of the estimated worth. Calculated risk is 1.3 times that bid, and Never more than is 1.5 times that bid. In Eruditio, before the treasure total is known, those three prices are 80% of the worth at 10, 17, and 24 treasures.
 
 ## Database
 
