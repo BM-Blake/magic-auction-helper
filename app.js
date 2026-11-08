@@ -6,6 +6,8 @@ const state = {
   board: null,
   selected: null,
   detailOpen: null,
+  detailItem: null,
+  detailSub: null,
   groups: [emptyGroup()],
   johnsonIntroUsed: false,
   database: { rarity: "", type: "", size: "", sort: "price-desc", open: { rarity: false, type: false, size: false } }
@@ -23,8 +25,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=201"),
-      fetch("data/treasures.json?v=201")
+      fetch("data/auction.json?v=213"),
+      fetch("data/treasures.json?v=213")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1665,29 +1667,39 @@ function onSummaryClick(event) {
   const next = { kind: button.dataset.open, id: button.dataset.id };
   const same = state.selected && state.selected.kind === next.kind && state.selected.id === next.id;
   state.selected = same ? null : next;
+  state.detailItem = null;
+  state.detailSub = null;
   state.detailOpen = state.selected && state.selected.id === "unknown"
-    ? (blockingKind(state.selected.kind) || state.selected.kind)
+    ? (needsAnchorChoice(state.selected.kind) ? state.selected.kind : (blockingKind(state.selected.kind) || state.selected.kind))
     : null;
   render();
 }
 
 function onDetailClick(event) {
-  const choose = event.target.closest("[data-choose]");
-  if (choose) {
-    const from = state.selected && state.selected.kind;
-    state.selected = { kind: choose.dataset.choose, id: choose.dataset.id };
-    state.detailOpen = from && from !== choose.dataset.choose ? from : null;
-    render();
-    return;
-  }
   const adjust = event.target.closest("[data-adjust]");
   if (adjust) {
     adjustDetail(adjust);
     return;
   }
+  const itemOpener = event.target.closest("[data-open-item]");
+  if (itemOpener) {
+    const id = itemOpener.dataset.openItem;
+    state.detailItem = state.detailItem === id ? null : id;
+    render();
+    return;
+  }
+  const subOpener = event.target.closest("[data-open-sub]");
+  if (subOpener) {
+    const id = subOpener.dataset.openSub;
+    state.detailSub = state.detailSub === id ? null : id;
+    render();
+    return;
+  }
   const opener = event.target.closest("[data-open-field]");
   if (!opener) return;
   state.detailOpen = state.detailOpen === opener.dataset.openField ? null : opener.dataset.openField;
+  state.detailSub = null;
+  if (state.detailOpen !== "items") state.detailItem = null;
   render();
 }
 
@@ -1701,6 +1713,8 @@ function adjustDetail(button) {
   if (!selectionStillOpen()) {
     state.selected = null;
     state.detailOpen = null;
+    state.detailItem = null;
+    state.detailSub = null;
   }
   persist();
   render();
@@ -1747,13 +1761,11 @@ function adjustChild(facts, field, id, delta) {
 }
 
 function increaseChild(facts, field, id) {
-  if (atCategoryMax(field, id) || blockedByMaxedCategory(facts)) return false;
+  if (atCategoryMax(field, id)) return false;
   const open = openDonors(facts, field, id)
     .sort((left, right) => detailSpecificity(left) - detailSpecificity(right));
-  if (open.length && !revealingNewTreasure(facts, field)) {
-    return assignToDonor(open[0], field, id);
-  }
-  if (slotsLeft() > 0) {
+  if (revealingNewTreasure(facts, field)) {
+    if (blockedByMaxedCategory(facts)) return false;
     const created = freshFacts(facts, field, id);
     if (!created) return false;
     state.board.items.push(blankItem(created));
@@ -1799,6 +1811,8 @@ function endGame() {
   state.board.maxCounts = emptyMaxCounts();
   state.selected = null;
   state.detailOpen = null;
+  state.detailItem = null;
+  state.detailSub = null;
   state.johnsonIntroUsed = false;
   resetComposer();
   setSheet(false);
@@ -2114,11 +2128,11 @@ function canDecrease(facts, field, id) {
 }
 
 function canAssign(facts, field, id) {
-  if (id === "unknown" || atCategoryMax(field, id) || blockedByMaxedCategory(facts)) return false;
+  if (id === "unknown" || atCategoryMax(field, id)) return false;
   const pool = Object.assign({}, facts);
   writeDetailFact(pool, field, "unknown");
-  if (openDonors(pool, field, id).length > 0) return true;
-  return slotsLeft() > 0 && freshFacts(facts, field, id) != null;
+  if (revealingNewTreasure(facts, field)) return !blockedByMaxedCategory(facts) && freshFacts(facts, field, id) != null;
+  return openDonors(pool, field, id).length > 0;
 }
 
 function slotsLeft() {
@@ -2172,14 +2186,25 @@ function factKind(field) {
 }
 
 function openDonors(facts, field, id) {
-  return state.board.items.filter((item) => {
+  const eligible = state.board.items.filter((item) => {
     if (!itemMatches(item, facts) || !childUnset(item, field) || exactTreasure(item)) return false;
     if (field === "sizes" && item.type === "collection") return false;
-    if (field !== "rarities" && !factSpecified(facts, "rarities") && item.rarity && item.rarity !== "unknown") return false;
-    if (field !== "types" && !factSpecified(facts, "types") && item.type && item.type !== "unknown") return false;
-    if (field !== "sizes" && !factSpecified(facts, "sizes") && item.size != null && item.size !== "") return false;
     return catalogSupports(choiceFacts(item, factKind(field), id));
   });
+  const plain = eligible.filter((item) => !extraFact(item, facts, field));
+  if (plain.length || !positiveFact(facts)) return plain;
+  return eligible;
+}
+
+function extraFact(item, facts, field) {
+  if (field !== "rarities" && !factSpecified(facts, "rarities") && item.rarity && item.rarity !== "unknown") return true;
+  if (field !== "types" && !factSpecified(facts, "types") && item.type && item.type !== "unknown") return true;
+  if (field !== "sizes" && !factSpecified(facts, "sizes") && item.size != null && item.size !== "") return true;
+  return false;
+}
+
+function positiveFact(facts) {
+  return factSpecified(facts, "rarities") || factSpecified(facts, "types") || factSpecified(facts, "sizes");
 }
 
 function parentFacts(selected) {
@@ -2262,57 +2287,158 @@ function renderDetail() {
   if (!items.length && !unknownOpen) return;
   const levels = detailLevels(state.selected);
   const parent = parentFacts(state.selected);
+  if (unknown && needsAnchorChoice(state.selected.kind)) {
+    const categories = anchorFields(state.selected.kind).map((field) => ({
+      field,
+      groups: groupedDonors(parent, state.selected.kind, field)
+    })).filter((entry) => entry.groups.length);
+    const pair = document.createElement("li");
+    pair.className = "detail-pair";
+    const pairRow = document.createElement("div");
+    pairRow.className = "detail-pair-row";
+    let openGroups = null;
+    categories.forEach((entry) => {
+      const open = state.detailOpen === entry.field;
+      if (open) openGroups = entry.groups;
+      const count = entry.groups.reduce((sum, group) => sum + group.count, 0);
+      pairRow.appendChild(detailToggle(fieldLabel(entry.field), String(count), {
+        openField: entry.field,
+        expanded: open
+      }));
+    });
+    pair.appendChild(pairRow);
+    if (openGroups) {
+      pair.appendChild(subcategoryBlock(state.selected.kind, parent, openGroups, (group) => `${group.field}:${group.id}`));
+    }
+    list.appendChild(pair);
+    return;
+  }
+  let pair = null;
+  let pairRow = null;
+  let openChoices = null;
+  const flushPair = () => {
+    if (!pair) return;
+    pair.appendChild(pairRow);
+    if (openChoices) pair.appendChild(openChoices);
+    list.appendChild(pair);
+    pair = null;
+    pairRow = null;
+    openChoices = null;
+  };
   levels.forEach((field) => {
-    if (field === state.selected.kind && needsAnchorChoice(field)) {
-      const row = document.createElement("li");
-      row.className = "detail-cat is-open";
-      anchorFields(field).forEach((other) => {
-        const options = anchorOptions(other);
-        if (!options.length) return;
-        row.appendChild(choicePrompt(other, options));
-      });
-      list.appendChild(row);
-      return;
-    }
-    if (asksForChoice(field)) {
-      const row = document.createElement("li");
-      row.className = "detail-cat is-open";
-      row.appendChild(choicePrompt(field));
-      list.appendChild(row);
-      return;
-    }
+    const choiceGroups = asksForChoice(field) ? groupedDonors(parent, state.selected.kind, field) : null;
+    if (choiceGroups && !choiceGroups.length) return;
     const sizeLocked = field === "sizes" && parent.type === "collection";
     const filled = filledCount(parent, field);
     const open = state.detailOpen === field && !sizeLocked;
-    const row = document.createElement("li");
-    row.className = open ? "detail-cat is-open" : "detail-cat";
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "detail-cat-btn";
-    button.dataset.openField = field;
-    button.disabled = sizeLocked;
-    button.setAttribute("aria-expanded", open ? "true" : "false");
-    const name = document.createElement("span");
-    name.textContent = fieldLabel(field);
-    const total = unknown ? unknownCount(state.board, state.selected.kind) : items.length;
-    const count = document.createElement("span");
-    count.className = "count";
-    count.textContent = total ? `${filled}/${total}` : String(filled);
-    button.append(name, count);
-    row.appendChild(button);
-    if (open) {
-      const choices = document.createElement("ul");
-      choices.className = "detail-list";
-      rowsFor(field, parent, unknown && field === state.selected.kind).forEach((choice) => {
-        const facts = Object.assign({}, parent);
-        writeDetailFact(facts, field, choice.id);
-        choices.appendChild(stepRow(choice, field, facts));
-      });
-      row.appendChild(choices);
+    if (!pair) {
+      pair = document.createElement("li");
+      pair.className = "detail-pair";
+      pairRow = document.createElement("div");
+      pairRow.className = "detail-pair-row";
     }
-    list.appendChild(row);
+    const total = unknown ? unknownCount(state.board, state.selected.kind) : items.length;
+    pairRow.appendChild(detailToggle(fieldLabel(field), total ? `${filled}/${total}` : String(filled), {
+      openField: field,
+      expanded: open,
+      disabled: sizeLocked
+    }));
+    if (!open) return;
+    openChoices = choiceGroups
+      ? subcategoryBlock(state.selected.kind, parent, choiceGroups, (group) => `${group.field}:${group.id}`)
+      : detailChoices(field, parent);
   });
+  flushPair();
   if (!unknown && items.length) appendItemEditors(list, items);
+}
+
+function detailChoices(field, parent) {
+  const other = otherFact(parent, field);
+  const groups = other && !plainDonors(parent, field, other).length ? groupedDonors(parent, field, other) : [];
+  if (!groups.length) return flatDetailList(field, parent);
+  if (state.detailSub && !state.detailSub.includes(":") && !groups.some((group) => group.id === state.detailSub)) state.detailSub = null;
+  return subcategoryBlock(field, parent, groups, (group) => group.id);
+}
+
+function subcategoryBlock(field, parent, groups, keyOf) {
+  const wrap = document.createElement("div");
+  wrap.className = "detail-subs";
+  const line = document.createElement("div");
+  line.className = "detail-sub-row";
+  let openGroup = null;
+  groups.forEach((group) => {
+    const key = keyOf(group);
+    const open = state.detailSub === key;
+    if (open) openGroup = group;
+    const rarity = group.field === "rarities" ? state.data.rarities.find((entry) => entry.id === group.id) : null;
+    line.appendChild(detailToggle(group.label, String(group.count), {
+      openSub: key,
+      expanded: open,
+      color: rarity ? rarity.color : ""
+    }));
+  });
+  wrap.appendChild(line);
+  if (openGroup) {
+    const facts = Object.assign({}, parent);
+    writeDetailFact(facts, openGroup.field, openGroup.id);
+    const list = document.createElement("ul");
+    list.className = "detail-list";
+    rowsFor(field, facts, false).forEach((choice) => {
+      if (choice.id === "unknown") return;
+      const rowFacts = Object.assign({}, facts);
+      writeDetailFact(rowFacts, field, choice.id);
+      list.appendChild(stepRow(choice, field, rowFacts, { field: openGroup.field, id: openGroup.id }));
+    });
+    wrap.appendChild(list);
+  }
+  return wrap;
+}
+
+function flatDetailList(field, parent) {
+  const choices = document.createElement("ul");
+  choices.className = "detail-list";
+  rowsFor(field, parent, isUnknownSelection(state.selected) && field === state.selected.kind).forEach((choice) => {
+    const facts = Object.assign({}, parent);
+    writeDetailFact(facts, field, choice.id);
+    choices.appendChild(stepRow(choice, field, facts));
+  });
+  return choices;
+}
+
+function otherFact(parent, field) {
+  const specified = parent.rarity ? "rarities" : parent.type ? "types" : parent.size != null && parent.size !== "" ? "sizes" : "";
+  const kind = specified || (isUnknownSelection(state.selected) ? state.selected.kind : "");
+  if (!kind || kind === field) return "";
+  return ["rarities", "types", "sizes"].find((entry) => entry !== kind && entry !== field) || "";
+}
+
+function plainDonors(parent, field, other) {
+  return state.board.items.filter((item) => {
+    return itemMatches(item, parent) && childUnset(item, field) && childUnset(item, other) && !exactTreasure(item);
+  });
+}
+
+function groupedDonors(parent, field, other) {
+  const groups = new Map();
+  state.board.items.forEach((item) => {
+    if (!itemMatches(item, parent) || !childUnset(item, field) || childUnset(item, other) || exactTreasure(item)) return;
+    const id = other === "rarities" ? item.rarity : other === "types" ? item.type : sizeKey(item.size);
+    if (!id || id === "unknown") return;
+    if (field === "sizes" && id === "collection") return;
+    if (!groups.has(id)) groups.set(id, 0);
+    groups.set(id, groups.get(id) + 1);
+  });
+  const order = other === "rarities"
+    ? state.data.rarities.map((entry) => entry.id)
+    : other === "types"
+      ? state.data.types.map((entry) => entry.id)
+      : orderedSizePresets();
+  return order.filter((id) => groups.has(id)).map((id) => ({
+    id,
+    field: other,
+    label: other === "rarities" ? rarityName(id) : other === "types" ? typeName(id) : sizeLabel(id),
+    count: groups.get(id)
+  }));
 }
 
 function asksForChoice(field) {
@@ -2322,7 +2448,12 @@ function asksForChoice(field) {
 function needsAnchorChoice(field) {
   if (!isUnknownSelection(state.selected) || state.selected.kind !== field) return false;
   if (slotsLeft() > 0 || hasBlankDonor(field)) return false;
-  return anchorFields(field).some((other) => anchorOptions(other).length > 0);
+  return anchorGroups(field).length > 0;
+}
+
+function anchorGroups(field) {
+  const parent = parentFacts(state.selected);
+  return anchorFields(field).flatMap((other) => groupedDonors(parent, field, other));
 }
 
 function anchorFields(field) {
@@ -2339,52 +2470,67 @@ function hasBlankDonor(field) {
   });
 }
 
-function anchorOptions(kind) {
-  return rowsFor(kind, parentFacts(state.selected), false).filter((choice) => choice.id !== "unknown");
+function detailArrow() {
+  const arrow = document.createElement("span");
+  arrow.className = "detail-arrow";
+  arrow.setAttribute("aria-hidden", "true");
+  return arrow;
 }
 
-function choicePrompt(field, options) {
-  const wrap = document.createElement("div");
-  wrap.className = "choice-ask";
-  const question = document.createElement("p");
-  question.className = "choice-question";
-  question.textContent = `Which ${choiceNoun(field)} do you want to add a ${choiceNoun(state.selected.kind)} to?`;
-  const choices = document.createElement("div");
-  choices.className = "choice-options";
-  (options || rowsFor(field, parentFacts(state.selected), false)).forEach((choice) => {
-    if (choice.id === "unknown") return;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chip is-on";
-    button.dataset.choose = field;
-    button.dataset.id = choice.id;
-    button.textContent = choice.label;
-    if (choice.color) {
-      button.style.setProperty("--chip", choice.color);
-      button.style.setProperty("--chip-ink", choice.ink || "#1b1e26");
-    }
-    choices.appendChild(button);
-  });
-  wrap.append(question, choices);
-  return wrap;
+function detailToggle(label, count, options) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "detail-toggle";
+  button.setAttribute("aria-expanded", options.expanded ? "true" : "false");
+  if (options.openField) button.dataset.openField = options.openField;
+  if (options.openItem) button.dataset.openItem = options.openItem;
+  if (options.openSub) button.dataset.openSub = options.openSub;
+  if (options.disabled) button.disabled = true;
+  const name = document.createElement("span");
+  name.textContent = label;
+  if (options.color) name.style.color = options.color;
+  button.append(name, detailArrow());
+  if (count != null) {
+    const total = document.createElement("span");
+    total.className = "count";
+    total.textContent = count;
+    button.appendChild(total);
+  }
+  return button;
 }
 
-function choiceNoun(kind) {
-  if (kind === "rarities") return "color";
-  if (kind === "types") return "type";
-  return "size";
+function itemToggleLabel(item, index) {
+  const treasure = exactTreasure(item);
+  if (treasure) return treasure.name;
+  const parts = [`Item ${index}`];
+  if (state.selected && state.selected.kind !== "rarities" && item.rarity) parts.push(rarityName(item.rarity));
+  if (state.selected && state.selected.kind !== "types" && item.type) parts.push(typeName(item.type));
+  if (state.selected && state.selected.kind !== "sizes" && item.size != null) parts.push(sizeLabel(item.size, item.type));
+  if (item.price != null) parts.push(formatCoins(item.price));
+  return parts.join(" · ");
 }
 
 function appendItemEditors(list, items) {
+  if (state.detailItem && !items.some((item) => item.id === state.detailItem)) state.detailItem = null;
+  const open = state.detailOpen === "items";
   const block = document.createElement("li");
-  block.className = "detail-items";
-  const title = document.createElement("p");
-  title.className = "detail-items-title";
-  title.textContent = "Items";
-  block.appendChild(title);
-  const priced = items.filter((item) => item.price != null);
-  const unpriced = items.filter((item) => item.price == null);
-  priced.concat(unpriced).forEach((item) => block.appendChild(itemCard(item)));
+  block.className = open ? "detail-cat is-open" : "detail-cat";
+  block.appendChild(detailToggle("Items", String(items.length), { openField: "items", expanded: open }));
+  if (open) {
+    const cards = document.createElement("div");
+    cards.className = "detail-item-list";
+    const priced = items.filter((item) => item.price != null);
+    const unpriced = items.filter((item) => item.price == null);
+    priced.concat(unpriced).forEach((item, index) => {
+      const itemOpen = state.detailItem === item.id;
+      const wrap = document.createElement("div");
+      wrap.className = itemOpen ? "detail-subitem is-open" : "detail-subitem";
+      wrap.appendChild(detailToggle(itemToggleLabel(item, index + 1), null, { openItem: item.id, expanded: itemOpen }));
+      if (itemOpen) wrap.appendChild(itemCard(item));
+      cards.appendChild(wrap);
+    });
+    block.appendChild(cards);
+  }
   list.appendChild(block);
 }
 
@@ -2610,14 +2756,22 @@ function rowsFor(kind, parent, hideUnknown) {
   return rows;
 }
 
-function stepRow(choice, field, facts) {
+function stepRow(choice, field, facts, scope) {
   const row = document.createElement("li");
   row.className = "step-row";
   const label = document.createElement("span");
   label.className = "step-label is-static";
   label.textContent = choice.label;
   if (choice.color) label.style.color = choice.color;
-  row.append(label, stepper(choice.count, field, choice.id, null, null, canAssign(facts, field, choice.id), canDecrease(facts, field, choice.id)));
+  row.append(label, stepper(
+    choice.count,
+    scope ? scope.field : field,
+    scope ? scope.id : choice.id,
+    scope ? field : null,
+    scope ? choice.id : null,
+    canAssign(facts, field, choice.id),
+    canDecrease(facts, field, choice.id)
+  ));
   return row;
 }
 
@@ -3356,5 +3510,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=201").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=213").catch(() => {});
 }

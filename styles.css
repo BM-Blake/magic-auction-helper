@@ -335,6 +335,18 @@ button { cursor: pointer; }
   gap: 10px;
 }
 
+.detail-cat-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+}
+
 .database-filter-row .detail-cat-btn {
   flex-direction: column;
   justify-content: center;
@@ -982,49 +994,96 @@ legend {
 .detail h3 { margin: 0 0 8px; font-size: 1rem; }
 
 .detail-cats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.detail-cat.is-open { grid-column: 1 / -1; }
+.detail-pair-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+}
 
-.detail-cat-btn {
+.detail-pair-row .detail-toggle:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.detail-toggle {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--bg);
-  color: inherit;
-  font: inherit;
+  min-height: 40px;
+  padding: 6px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 650;
+  text-align: left;
 }
 
-.detail-cat.is-open > .detail-cat-btn { border-color: var(--gold); }
+.detail-arrow {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-top: -1px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+}
 
-.detail-cat .detail-list { margin-top: 8px; }
+.detail-toggle[aria-expanded="true"] .detail-arrow {
+  margin-top: -3px;
+  transform: rotate(45deg);
+}
 
-.detail-items {
-  grid-column: 1 / -1;
+.detail-toggle .count {
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-toggle:disabled {
+  opacity: 0.45;
+}
+
+.detail-cat > .detail-list,
+.detail-pair > .detail-list,
+.detail-pair > .detail-subs,
+.detail-cat > .detail-subs,
+.detail-item-list {
+  margin: 0 0 8px 18px;
+}
+
+.detail-subs .detail-list { margin: 0 0 8px 18px; }
+
+.detail-sub-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+}
+
+.detail-sub-row .detail-toggle {
+  min-height: 36px;
+  font-size: 0.9rem;
+}
+
+.detail-item-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
-.detail-items-title {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.detail-subitem .detail-toggle {
+  min-height: 36px;
+  font-size: 0.9rem;
 }
+
+.detail-subitem > .item-card { margin: 0 0 8px 18px; }
 
 .item-card {
   display: grid;
@@ -1123,20 +1182,6 @@ legend {
 .step-row.is-open > .step-label { text-align: left; }
 
 .step-row.is-open > .step-children { grid-column: 1 / -1; }
-
-.choice-ask { grid-column: 1 / -1; }
-.choice-ask + .choice-ask { margin-top: 14px; }
-
-.choice-question {
-  margin: 0 0 8px;
-  font-size: 0.95rem;
-}
-
-.choice-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 
 .stepper {
   display: flex;
@@ -1559,4 +1604,178 @@ select:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto; }
+}
+
+@media (orientation: landscape) and (max-height: 540px) {
+  .app {
+    width: min(980px, 100%);
+    padding:
+      calc(8px + var(--safe-top))
+      calc(12px + env(safe-area-inset-right, 0px))
+      calc(12px + var(--safe-bottom))
+      calc(12px + env(safe-area-inset-left, 0px));
+  }
+
+  .app:has(#scene-menu:not([hidden])) {
+    padding-bottom: calc(8px + var(--safe-bottom));
+  }
+
+  .app:has(#scene-tracker:not([hidden])),
+  .app:has(#scene-database:not([hidden])) {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .scene-menu {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(168px, 0.7fr);
+    grid-template-rows: auto auto;
+    align-content: center;
+    gap: 10px 14px;
+    min-height: calc(100vh - 16px - var(--safe-top) - var(--safe-bottom));
+    padding: 50px 0 76px;
+  }
+
+  .menu-picks {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+
+  #game-start,
+  #open-database {
+    grid-column: 2;
+    min-height: 48px;
+  }
+
+  #game-start { grid-row: 1; align-self: end; }
+  #open-database { grid-row: 2; align-self: start; }
+
+  .app-title { font-size: 1.15rem; }
+
+  .app-title > span:last-child { margin-top: 4px; }
+
+  .house-toggle { min-height: 44px; }
+
+  .house-menu { max-height: min(220px, 46vh); }
+
+  .support {
+    flex-direction: row;
+    justify-content: center;
+    gap: 12px;
+    left: max(calc(12px + env(safe-area-inset-left, 0px)), calc(50% - 490px + 12px));
+    right: max(calc(12px + env(safe-area-inset-right, 0px)), calc(50% - 490px + 12px));
+  }
+
+  .support-actions {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .scene-tracker,
+  .scene-database {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .scene-tracker {
+    display: grid;
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .scene-tracker #game-bar {
+    position: static;
+    margin: 0;
+    padding: 0;
+    overflow: auto;
+    background: transparent;
+  }
+
+  .scene-tracker #game-main {
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .scene-tracker .title-row { margin-bottom: 8px; }
+
+  .scene-tracker .worth {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .scene-tracker .worth-range { font-size: 1.2rem; }
+
+  .scene-tracker .bid-levels .worth-range { font-size: 1rem; }
+
+  .scene-tracker .known-menu {
+    top: auto;
+    bottom: calc(100% + 8px);
+    max-height: min(200px, 42vh);
+  }
+
+  #game-main .card {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    margin-top: 0;
+  }
+
+  #game-main .card > h2,
+  #game-main .card > .empty,
+  #game-main .card > fieldset,
+  #game-main .card > .detail {
+    grid-column: 1 / -1;
+  }
+
+  #game-main .card > h2 { margin-bottom: 0; }
+
+  .scene-database {
+    display: grid;
+    grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    column-gap: 16px;
+    align-items: stretch;
+  }
+
+  .database-head {
+    position: static;
+    grid-column: 1;
+    grid-row: 1;
+    margin: 0;
+    padding: 0 0 8px;
+    overflow: auto;
+  }
+
+  .database-search { margin-bottom: 10px; }
+
+  .database-list,
+  #database-empty {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .database-list {
+    margin: 0;
+    overflow: auto;
+  }
+
+  #database-empty { align-self: start; }
+
+  .fab {
+    left: calc(12px + env(safe-area-inset-left, 0px));
+    bottom: calc(12px + var(--safe-bottom));
+  }
+
+  .sheet {
+    top: calc(8px + var(--safe-top));
+    bottom: calc(8px + var(--safe-bottom));
+    left: auto;
+    width: min(460px, 52vw);
+    right: max(calc(12px + env(safe-area-inset-right, 0px)), calc(50% - 490px + 12px));
+    max-height: none;
+  }
 }
