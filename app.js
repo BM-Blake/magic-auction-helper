@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=168"),
-      fetch("data/treasures.json?v=168")
+      fetch("data/auction.json?v=170"),
+      fetch("data/treasures.json?v=170")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1509,15 +1509,27 @@ function increaseChild(facts, field, id) {
   if (atCategoryMax(field, id) || blockedByMaxedCategory(facts)) return false;
   const open = openDonors(facts, field, id)
     .sort((left, right) => detailSpecificity(left) - detailSpecificity(right));
-  if (open.length) {
-    writeDetailFact(open[0], field, id);
-    if (field === "types" && id === "collection") open[0].size = collectionShape();
+  if (open.length && !revealingNewTreasure(facts, field)) {
+    return assignToDonor(open[0], field, id);
+  }
+  if (slotsLeft() > 0) {
+    const created = freshFacts(facts, field, id);
+    if (!created) return false;
+    state.board.items.push(blankItem(created));
     return true;
   }
+  if (!open.length) return false;
+  return assignToDonor(open[0], field, id);
+}
+
+function revealingNewTreasure(facts, field) {
   if (slotsLeft() < 1) return false;
-  const created = freshFacts(facts, field, id);
-  if (!created) return false;
-  state.board.items.push(blankItem(created));
+  return ["rarities", "types", "sizes"].every((kind) => kind === field || !factSpecified(facts, kind));
+}
+
+function assignToDonor(item, field, id) {
+  writeDetailFact(item, field, id);
+  if (field === "types" && id === "collection") item.size = collectionShape();
   return true;
 }
 
@@ -1569,6 +1581,7 @@ function render() {
     ink: entry.ink
   })));
   renderUnknown("rarities");
+  renderRarityLegend(counts);
   renderGroup($("#types"), $("#type-group"), "types", state.data.types.map((entry) => ({
     id: entry.id,
     label: entry.name,
@@ -1687,6 +1700,32 @@ function resolveUnknown() {
 function knownRarityCount(board, id) {
   const max = board.maxCounts?.rarities?.[id];
   return Number.isInteger(max) ? max : null;
+}
+
+function renderRarityLegend(counts) {
+  const knownNode = $("#rarity-known");
+  const openNode = $("#rarity-open");
+  if (!knownNode || !openNode || !state.board) return;
+  const known = ["gray", "green", "blue", "purple", "gold", "red"].reduce((sum, id) => sum + (counts.rarities[id] || 0), 0);
+  const total = state.board.treasureTotal;
+  knownNode.textContent = Number.isInteger(total) ? `${known}/${total}` : String(known);
+  knownNode.setAttribute("aria-label", Number.isInteger(total)
+    ? `${known} of ${total} treasures have a known rarity`
+    : `${known} treasures have a known rarity`);
+  const base = ["gray", "green", "blue", "purple"];
+  const maxes = state.board.maxCounts.rarities || {};
+  const capped = base.every((id) => Number.isInteger(maxes[id]));
+  const room = capped && Number.isInteger(total)
+    ? total - base.reduce((sum, id) => sum + maxes[id], 0)
+    : null;
+  if (room == null || room < 0) {
+    openNode.hidden = true;
+    openNode.textContent = "";
+    return;
+  }
+  openNode.hidden = false;
+  openNode.textContent = `${room} gold or red`;
+  openNode.setAttribute("aria-label", `${room} treasures can be gold or red`);
 }
 
 function renderTreasureTotal() {
@@ -3012,5 +3051,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=168").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=170").catch(() => {});
 }

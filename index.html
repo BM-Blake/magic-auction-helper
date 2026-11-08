@@ -9,9 +9,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Magic Auction Helper</title>
-    <link rel="icon" href="icon.png?v=168" type="image/png">
+    <link rel="icon" href="icon.png?v=170" type="image/png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=168">
+    <link rel="stylesheet" href="styles.css?v=170">
   </head>
   <body>
     <div class="app">
@@ -95,7 +95,11 @@
           <p id="info-empty" class="empty">Nothing revealed yet.</p>
 
           <fieldset id="rarity-group" hidden>
-            <legend>Rarity</legend>
+            <legend>
+              <span>Rarity</span>
+              <span id="rarity-known" class="rarity-known"></span>
+              <span id="rarity-open" class="rarity-open" hidden></span>
+            </legend>
             <div id="rarities" class="chips" role="group" aria-label="Revealed rarities"></div>
           </fieldset>
 
@@ -170,6 +174,6 @@
         </li>
       </ul>
     </dialog>
-    <script src="app.js?v=168"></script>
+    <script src="app.js?v=170"></script>
   </body>
 </html>
