@@ -1101,12 +1101,39 @@ legend {
 .item-card .item-price,
 .item-name-row { grid-column: 1 / -1; }
 
-.item-name-row {
+.item-name-row,
+.item-card-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
 }
+
+.item-card-actions { grid-column: 1 / -1; }
+
+.item-card-actions .item-name { margin-right: auto; }
+
+.item-save,
+.item-undo {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  line-height: 1;
+  font-size: 1rem;
+}
+
+.item-save {
+  background: var(--gold);
+  border-color: transparent;
+  color: var(--gold-ink);
+  font-weight: 700;
+}
+
+.item-save:disabled { opacity: 0.35; cursor: default; }
 
 .item-name-row .item-name {
   flex: 1;

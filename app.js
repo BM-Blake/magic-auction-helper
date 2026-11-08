@@ -8,6 +8,7 @@ const state = {
   detailOpen: null,
   detailItem: null,
   detailSub: null,
+  itemDraft: null,
   groups: [emptyGroup()],
   johnsonIntroUsed: false,
   database: { rarity: "", type: "", size: "", sort: "price-desc", open: { rarity: false, type: false, size: false } }
@@ -25,8 +26,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=216"),
-      fetch("data/treasures.json?v=216")
+      fetch("data/auction.json?v=218"),
+      fetch("data/treasures.json?v=218")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1863,6 +1864,7 @@ function endGame() {
 }
 
 function render() {
+  if (state.itemDraft && state.itemDraft.id !== state.detailItem) state.itemDraft = null;
   if (resolveUnknown() || assignOnlyPossibleRarity() || resolveExactItems()) persist();
   const house = state.data.houses.find((entry) => entry.id === state.board.house);
   const houseName = $("#house-name");
@@ -2035,7 +2037,7 @@ function assignOnlyPossibleRarity() {
     rarity: color,
     type: item.type && item.type !== "unknown" ? item.type : "",
     size: item.size == null || item.size === "" ? null : item.size
-  }));
+  }, heldFacts(item, "rarity")));
   if (!fits) return false;
   missing.forEach((item) => {
     item.rarity = color;
@@ -2231,7 +2233,7 @@ function openDonors(facts, field, id) {
   const eligible = state.board.items.filter((item) => {
     if (!itemMatches(item, facts) || !childUnset(item, field) || exactTreasure(item)) return false;
     if (field === "sizes" && item.type === "collection") return false;
-    return catalogSupports(choiceFacts(item, factKind(field), id));
+    return catalogSupports(choiceFacts(item, factKind(field), id), heldFacts(item, factKind(field)));
   });
   const plain = eligible.filter((item) => !extraFact(item, facts, field));
   if (plain.length || !positiveFact(facts)) return plain;
@@ -2577,32 +2579,82 @@ function appendItemEditors(list, items) {
 }
 
 function itemCard(item) {
-  const treasure = exactTreasure(item);
+  const draft = itemDraftFor(item.id);
+  const view = draft ? draft.view : item;
+  const savedLock = !draft && Boolean(exactTreasure(item));
+  const snapped = Boolean(draft && draft.snapped);
+  const locked = savedLock || snapped;
   const card = document.createElement("div");
-  card.className = treasure ? "item-card is-locked" : "item-card";
+  card.className = locked ? "item-card is-locked" : "item-card";
   card.dataset.item = item.id;
-  if (item.rarity) {
-    const rarity = state.data.rarities.find((entry) => entry.id === item.rarity);
+  const rarityId = view.rarity || item.rarity;
+  if (rarityId) {
+    const rarity = state.data.rarities.find((entry) => entry.id === rarityId);
     if (rarity) card.style.borderColor = rarity.color;
   }
-  if (treasure) {
+  if (savedLock) {
     const titleRow = document.createElement("div");
     titleRow.className = "item-name-row";
     const title = document.createElement("p");
     title.className = "item-name";
-    title.textContent = treasure.name;
+    title.textContent = exactTreasure(item).name;
     titleRow.append(title, itemRemoveButton(item));
     card.appendChild(titleRow);
+  } else {
+    card.appendChild(itemCardActions(item, view, snapped));
   }
   card.append(
-    itemPriceField(item, Boolean(treasure)),
-    itemFactSelect(item, "rarity", Boolean(treasure)),
-    itemFactSelect(item, "type", Boolean(treasure)),
-    itemFactSelect(item, "size", Boolean(treasure))
+    itemPriceField(view, locked),
+    itemFactSelect(view, "rarity", locked),
+    itemFactSelect(view, "type", locked),
+    itemFactSelect(view, "size", locked)
   );
-  const choices = treasure ? [] : matchingTreasures(item);
-  if (choices.length > 1 && choices.length <= 6) card.appendChild(itemNameField(item, choices));
+  const choices = locked ? [] : matchingTreasures(view);
+  if (choices.length > 1 && choices.length <= 6) card.appendChild(itemNameField(view, choices));
   return card;
+}
+
+function itemCardActions(item, view, snapped) {
+  const row = document.createElement("div");
+  row.className = "item-card-actions";
+  if (snapped) {
+    const title = document.createElement("p");
+    title.className = "item-name";
+    title.textContent = view.catalogName;
+    row.appendChild(title);
+    row.appendChild(itemUndoButton());
+  }
+  row.appendChild(itemSaveButton(item));
+  return row;
+}
+
+function itemUndoButton() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "item-undo";
+  button.textContent = "↩";
+  button.setAttribute("aria-label", "Undo");
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    undoItemSnap();
+  });
+  return button;
+}
+
+function itemSaveButton(item) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "item-save";
+  button.textContent = "✓";
+  button.disabled = !itemDraftDirty(item);
+  button.setAttribute("aria-label", "Save");
+  button.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    commitItemCard(item.id);
+  });
+  return button;
 }
 
 function itemRemoveButton(item) {
@@ -2654,7 +2706,7 @@ function itemPriceField(item, locked) {
   const label = document.createElement("label");
   label.className = "field item-price";
   const name = document.createElement("span");
-  name.textContent = "Exact price";
+  name.textContent = "Price";
   const input = document.createElement("input");
   input.dataset.itemField = "price";
   input.inputMode = "text";
@@ -2663,7 +2715,7 @@ function itemPriceField(item, locked) {
   input.placeholder = "120k or 1.2m";
   input.value = item.price == null ? "" : String(item.price);
   input.disabled = locked;
-  input.setAttribute("aria-label", "Exact price");
+  input.setAttribute("aria-label", "Price");
   label.append(name, input);
   return label;
 }
@@ -2682,7 +2734,7 @@ function itemFactSelect(item, field, locked) {
   select.appendChild(blank);
   if (field === "rarity") {
     state.data.rarities.forEach((entry) => {
-      if (entry.id !== item.rarity && (atCategoryMax("rarities", entry.id) || !catalogSupports(choiceFacts(item, "rarity", entry.id)))) return;
+      if (entry.id !== item.rarity && (atCategoryMax("rarities", entry.id) || !catalogSupports(choiceFacts(item, "rarity", entry.id), heldFacts(item, "rarity")))) return;
       const option = document.createElement("option");
       option.value = entry.id;
       option.textContent = entry.name;
@@ -2691,7 +2743,7 @@ function itemFactSelect(item, field, locked) {
     select.value = item.rarity || "";
   } else if (field === "type") {
     state.data.types.forEach((entry) => {
-      if (entry.id !== item.type && (atCategoryMax("types", entry.id) || !catalogSupports(choiceFacts(item, "type", entry.id)))) return;
+      if (entry.id !== item.type && (atCategoryMax("types", entry.id) || !catalogSupports(choiceFacts(item, "type", entry.id), heldFacts(item, "type")))) return;
       const option = document.createElement("option");
       option.value = entry.id;
       option.textContent = entry.name;
@@ -2700,7 +2752,7 @@ function itemFactSelect(item, field, locked) {
     select.value = item.type || "";
   } else {
     state.data.sizePresets.forEach((size) => {
-      if (sizeKey(size) !== sizeKey(item.size) && (atCategoryMax("sizes", size) || !catalogSupports(choiceFacts(item, "size", size)))) return;
+      if (sizeKey(size) !== sizeKey(item.size) && (atCategoryMax("sizes", size) || !catalogSupports(choiceFacts(item, "size", size), heldFacts(item, "size")))) return;
       const option = document.createElement("option");
       option.value = String(size);
       option.textContent = String(size);
@@ -2723,59 +2775,193 @@ function onItemEdit(event) {
   const item = state.board.items.find((entry) => entry.id === card.dataset.item);
   if (!item || exactTreasure(item)) return;
   const field = event.target.dataset.itemField;
-  if (field === "price") {
-    const raw = event.target.value.trim();
-    if (!raw) item.price = null;
-    else {
-      const price = parseCoins(raw);
-      if (Number.isNaN(price)) {
-        event.target.setCustomValidity("Enter a price like 120000, 120k, or 1.2m.");
-        event.target.reportValidity();
+  if (!field) return;
+  const draft = ensureItemDraft(item);
+  const previous = cloneItemFacts(draft.view);
+  if (!applyDraftField(draft.view, field, event.target)) {
+    if (field !== "price") render();
+    return;
+  }
+  if (sameFacts(previous, draft.view)) return;
+  considerSnap(draft, previous);
+  if (field === "price" && !draft.snapped) {
+    refreshItemSave(item.id);
+    return;
+  }
+  render();
+}
+
+function itemDraftFor(id) {
+  return state.itemDraft && state.itemDraft.id === id ? state.itemDraft : null;
+}
+
+function ensureItemDraft(item) {
+  const existing = itemDraftFor(item.id);
+  if (existing) return existing;
+  state.itemDraft = {
+    id: item.id,
+    view: cloneItemFacts(item),
+    saved: cloneItemFacts(item),
+    beforeSnap: null,
+    snapped: false
+  };
+  return state.itemDraft;
+}
+
+function cloneItemFacts(item) {
+  return {
+    id: item.id,
+    rarity: item.rarity || "",
+    type: item.type || "",
+    size: item.size == null || item.size === "" ? null : item.size,
+    price: item.price == null ? null : item.price,
+    catalogName: item.catalogName || ""
+  };
+}
+
+function sameFacts(left, right) {
+  return (left.rarity || "") === (right.rarity || "")
+    && (left.type || "") === (right.type || "")
+    && sizeKey(left.size) === sizeKey(right.size)
+    && (left.price == null ? null : left.price) === (right.price == null ? null : right.price)
+    && (left.catalogName || "") === (right.catalogName || "");
+}
+
+function itemDraftDirty(item) {
+  const draft = itemDraftFor(item.id);
+  return Boolean(draft && (draft.snapped || !sameFacts(draft.view, draft.saved)));
+}
+
+function applyDraftField(view, field, target) {
+  if (field === "price") return readPriceInput(target, view);
+  if (field === "rarity") {
+    if (assigningWouldExceed("rarities", target.value, view)) return false;
+    view.rarity = target.value;
+    view.catalogName = "";
+    return true;
+  }
+  if (field === "type") {
+    if (assigningWouldExceed("types", target.value, view)) return false;
+    if (target.value === "collection" && sizeKey(view.size) !== collectionShape() && atCategoryMax("sizes", collectionShape())) return false;
+    view.type = target.value;
+    view.catalogName = "";
+    if (view.type === "collection") view.size = collectionShape();
+    return true;
+  }
+  if (field === "size") {
+    if (view.type === "collection") return false;
+    if (assigningWouldExceed("sizes", target.value, view)) return false;
+    view.size = target.value || null;
+    if (view.catalogName && !matchingTreasures(view).some((treasure) => treasure.name === view.catalogName)) view.catalogName = "";
+    return true;
+  }
+  if (field === "name") {
+    const chosen = state.data.treasures.find((treasure) => treasure.name === target.value);
+    if (!chosen) {
+      view.catalogName = "";
+      return true;
+    }
+    if (fillWouldExceed(view, chosen)) return false;
+    view.catalogName = chosen.name;
+    return true;
+  }
+  return false;
+}
+
+function readPriceInput(input, view) {
+  const raw = input.value.trim();
+  if (!raw) {
+    view.price = null;
+    input.setCustomValidity("");
+    return true;
+  }
+  const price = parseCoins(raw);
+  if (Number.isNaN(price)) {
+    input.setCustomValidity("Enter a price like 120000, 120k, or 1.2m.");
+    input.reportValidity();
+    return false;
+  }
+  input.setCustomValidity("");
+  view.price = price;
+  return true;
+}
+
+function considerSnap(draft, previous) {
+  const treasure = pendingTreasure(draft.view);
+  if (treasure && !fillWouldExceed(draft.view, treasure)) {
+    draft.beforeSnap = previous;
+    applyTreasure(draft.view, treasure);
+    draft.snapped = true;
+    return;
+  }
+  draft.snapped = false;
+  draft.beforeSnap = null;
+}
+
+function pendingTreasure(view) {
+  const matches = matchingTreasures(view);
+  if (view.catalogName) return matches.find((treasure) => treasure.name === view.catalogName) || null;
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function applyTreasure(view, treasure) {
+  view.catalogName = treasure.name;
+  if (!view.rarity && treasure.rarity) view.rarity = treasure.rarity;
+  if (!view.type && treasure.type) view.type = treasure.type === "figurine" ? "collection" : treasure.type;
+  if ((view.size == null || view.size === "") && (treasure.shape || treasure.size != null)) {
+    view.size = treasureShape(treasure) || sizeKey(treasure.size);
+  }
+  if (view.price == null && Number.isFinite(Number(treasure.price))) view.price = Number(treasure.price);
+}
+
+function refreshItemSave(id) {
+  const button = document.querySelector(`.item-card[data-item="${id}"] .item-save`);
+  const item = state.board && state.board.items.find((entry) => entry.id === id);
+  if (button && item) button.disabled = !itemDraftDirty(item);
+}
+
+function commitItemCard(id) {
+  const item = state.board && state.board.items.find((entry) => entry.id === id);
+  if (!item || exactTreasure(item)) return;
+  const draft = ensureItemDraft(item);
+  const card = document.querySelector(`.item-card[data-item="${id}"]`);
+  const input = card && card.querySelector('[data-item-field="price"]');
+  if (input && !input.disabled) {
+    const previous = cloneItemFacts(draft.view);
+    if (!readPriceInput(input, draft.view)) return;
+    if (!sameFacts(previous, draft.view)) {
+      considerSnap(draft, previous);
+      if (draft.snapped) {
+        render();
         return;
       }
-      event.target.setCustomValidity("");
-      item.price = price;
     }
-  } else if (field === "rarity") {
-    if (assigningWouldExceed("rarities", event.target.value, item)) {
-      render();
-      return;
-    }
-    item.rarity = event.target.value;
-  } else if (field === "type") {
-    if (assigningWouldExceed("types", event.target.value, item)) {
-      render();
-      return;
-    }
-    if (event.target.value === "collection" && sizeKey(item.size) !== collectionShape() && atCategoryMax("sizes", collectionShape())) {
-      render();
-      return;
-    }
-    item.type = event.target.value;
-    if (item.type === "collection") item.size = collectionShape();
-  } else if (field === "size") {
-    if (item.type === "collection") return;
-    if (assigningWouldExceed("sizes", event.target.value, item)) {
-      render();
-      return;
-    }
-    item.size = event.target.value || null;
-    if (item.catalogName && !matchingTreasures(item).some((treasure) => treasure.name === item.catalogName)) delete item.catalogName;
-  } else if (field === "name") {
-    const chosen = state.data.treasures.find((treasure) => treasure.name === event.target.value);
-    if (!chosen) delete item.catalogName;
-    else if (fillWouldExceed(item, chosen)) {
-      render();
-      return;
-    } else {
-      item.catalogName = chosen.name;
-      if (!item.rarity && chosen.rarity) item.rarity = chosen.rarity;
-      if (!item.type && chosen.type) item.type = chosen.type;
-      if (item.size == null) item.size = treasureShape(chosen) || sizeKey(chosen.size);
-      if (item.price == null) item.price = Number(chosen.price);
-    }
-  } else return;
+  }
+  saveItemDraft();
+}
+
+function saveItemDraft() {
+  const draft = state.itemDraft;
+  if (!draft || !state.board || !itemDraftDirty({ id: draft.id })) return;
+  const item = state.board.items.find((entry) => entry.id === draft.id);
+  if (!item || exactTreasure(item)) return;
+  item.rarity = draft.view.rarity || "";
+  item.type = draft.view.type || "";
+  item.size = draft.view.size == null || draft.view.size === "" ? null : draft.view.size;
+  item.price = draft.view.price == null ? null : draft.view.price;
+  if (draft.view.catalogName) item.catalogName = draft.view.catalogName;
+  else delete item.catalogName;
+  state.itemDraft = null;
   persist();
+  render();
+}
+
+function undoItemSnap() {
+  const draft = state.itemDraft;
+  if (!draft || !draft.beforeSnap) return;
+  draft.view = cloneItemFacts(draft.beforeSnap);
+  draft.beforeSnap = null;
+  draft.snapped = false;
   render();
 }
 
@@ -3413,12 +3599,21 @@ function typeAtMax(type) {
   return (type === "figurine" || type === "collection") && atCategoryMax("types", "collection");
 }
 
-function catalogSupports(facts) {
+function heldFacts(item, changing) {
+  return {
+    rarity: Boolean(item && item.rarity && item.rarity !== "unknown") && changing !== "rarity",
+    type: Boolean(item && item.type && item.type !== "unknown") && changing !== "type",
+    size: Boolean(item && item.size != null && item.size !== "") && changing !== "size"
+  };
+}
+
+function catalogSupports(facts, held) {
   const treasures = state.data && state.data.treasures;
   if (!Array.isArray(treasures) || !treasures.length) return true;
-  if (facts.rarity && atCategoryMax("rarities", facts.rarity)) return false;
-  if (facts.type && typeAtMax(facts.type)) return false;
-  if (facts.size != null && facts.size !== "" && atCategoryMax("sizes", facts.size)) return false;
+  const keep = held || {};
+  if (facts.rarity && !keep.rarity && atCategoryMax("rarities", facts.rarity)) return false;
+  if (facts.type && !keep.type && typeAtMax(facts.type)) return false;
+  if (facts.size != null && facts.size !== "" && !keep.size && atCategoryMax("sizes", facts.size)) return false;
   return treasures.some((treasure) => {
     if (facts.rarity && treasure.rarity !== facts.rarity) return false;
     if (facts.type && !typeMatches(treasure.type, facts.type)) return false;
@@ -3610,5 +3805,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=216").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=218").catch(() => {});
 }
