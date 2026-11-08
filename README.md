@@ -1,6 +1,6 @@
 # Magic Auction Helper
 
-Offline tracker for Magic Auction in Magic Chess: Go Go, season 7.1. It is a static page, so there is no build step, and it keeps working after the first load.
+Fan-made Magic Auction tracker for Magic Chess: Go Go, season 7.1. It is a static page, so there is no build step, and it keeps working after the first load.
 
 Live page: https://bm-blake.github.io/magic-auction-helper/
 
