@@ -8,7 +8,7 @@ const state = {
   detailOpen: null,
   groups: [emptyGroup()],
   johnsonIntroUsed: false,
-  database: { rarity: "", type: "", size: "", open: { rarity: false, type: false, size: false } }
+  database: { rarity: "", type: "", size: "", sort: "price-desc", open: { rarity: false, type: false, size: false } }
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -23,8 +23,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=196"),
-      fetch("data/treasures.json?v=196")
+      fetch("data/auction.json?v=201"),
+      fetch("data/treasures.json?v=201")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -60,6 +60,8 @@ function bindStaticEvents() {
   $("#open-database").addEventListener("click", showDatabase);
   $("#close-database").addEventListener("click", showMenu);
   $("#database-query").addEventListener("input", renderDatabase);
+  $("#database-sort-toggle").addEventListener("click", onDatabaseSortToggle);
+  $("#database-sort-menu").addEventListener("click", onDatabaseSortPick);
   $("#scene-database").addEventListener("click", onDatabaseFilter);
   $("#open-manual").addEventListener("click", openManual);
   $("#close-manual").addEventListener("click", closeManual);
@@ -132,6 +134,48 @@ function onDatabaseFilter(event) {
   renderDatabase();
 }
 
+const databaseSortLabels = {
+  rarity: "Rarity",
+  name: "Name",
+  "price-asc": "Low price",
+  "price-desc": "High price"
+};
+
+function closeDatabaseSort() {
+  const menu = $("#database-sort-menu");
+  const toggle = $("#database-sort-toggle");
+  if (!menu || !toggle) return;
+  menu.hidden = true;
+  toggle.setAttribute("aria-expanded", "false");
+}
+
+function onDatabaseSortToggle(event) {
+  event.stopPropagation();
+  const opening = $("#database-sort-menu").hidden;
+  closePickers();
+  if (!opening) return;
+  $("#database-sort-menu").hidden = false;
+  $("#database-sort-toggle").setAttribute("aria-expanded", "true");
+}
+
+function onDatabaseSortPick(event) {
+  const button = event.target.closest("[data-sort]");
+  if (!button) return;
+  state.database.sort = button.dataset.sort;
+  closeDatabaseSort();
+  renderDatabase();
+}
+
+function sortDatabaseTreasures(matches, sort, order) {
+  const byName = (left, right) => left.name.localeCompare(right.name);
+  const list = matches.slice();
+  if (sort === "name") list.sort(byName);
+  else if (sort === "price-asc") list.sort((left, right) => left.price - right.price || byName(left, right));
+  else if (sort === "price-desc") list.sort((left, right) => right.price - left.price || byName(left, right));
+  else list.sort((left, right) => (order.indexOf(left.rarity) - order.indexOf(right.rarity)) || byName(left, right));
+  return list;
+}
+
 function renderDatabase() {
   const filters = state.database;
   const query = ($("#database-query").value || "").trim().toLowerCase();
@@ -154,16 +198,19 @@ function renderDatabase() {
     label: String(size)
   })), filters.size);
   const order = state.data.rarities.map((entry) => entry.id);
-  const matches = state.data.treasures.filter((treasure) => {
+  const sort = state.database.sort || "price-desc";
+  const current = $("#database-sort-current");
+  if (current) current.textContent = databaseSortLabels[sort] || databaseSortLabels["price-desc"];
+  document.querySelectorAll("[data-sort]").forEach((button) => {
+    button.setAttribute("aria-selected", button.dataset.sort === sort ? "true" : "false");
+  });
+  const matches = sortDatabaseTreasures(state.data.treasures.filter((treasure) => {
     if (query && !treasure.name.toLowerCase().includes(query)) return false;
     if (filters.rarity && treasure.rarity !== filters.rarity) return false;
     if (filters.type && !typeMatches(treasure.type, filters.type)) return false;
     if (filters.size && !treasureMatchesSize(treasure, filters.size)) return false;
     return true;
-  }).sort((left, right) => {
-    const rarity = order.indexOf(left.rarity) - order.indexOf(right.rarity);
-    return rarity || left.name.localeCompare(right.name);
-  });
+  }), sort, order);
   const list = $("#database-list");
   const fragment = document.createDocumentFragment();
   matches.forEach((treasure) => fragment.appendChild(databaseRow(treasure)));
@@ -1063,6 +1110,7 @@ function setPickerOpen(kind, open) {
 function closePickers() {
   Object.keys(pickers).forEach((kind) => setPickerOpen(kind, false));
   closeKnownMenu();
+  closeDatabaseSort();
 }
 
 function closeKnownMenu() {
@@ -1097,7 +1145,7 @@ function onPickerPick(kind, event) {
 }
 
 function onPickerDismiss(event) {
-  if (event.target.closest("[data-picker], #known-picker")) return;
+  if (event.target.closest("[data-picker], #known-picker, .database-sort")) return;
   closePickers();
 }
 
@@ -3308,5 +3356,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=196").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=201").catch(() => {});
 }

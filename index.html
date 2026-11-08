@@ -39,9 +39,9 @@
         "keywords": "magic auction, magic auction database, magic auction mcgg, magic auction mcgg helper, magic auction mcgg tracker, magic auction mcgg database, magic auction helper, magic auction tracker, magic auction go go, magic chess go go, mcgg magic auction, magic auction treasure database"
       }
     </script>
-    <link rel="icon" href="icon.png?v=196" type="image/png">
+    <link rel="icon" href="icon.png?v=201" type="image/png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=196">
+    <link rel="stylesheet" href="styles.css?v=201">
   </head>
   <body>
     <div class="app">
@@ -117,7 +117,23 @@
           <div id="database-rarities" class="chips database-choices" hidden></div>
           <div id="database-types" class="chips database-choices" hidden></div>
           <div id="database-sizes" class="chips database-sizes database-choices" hidden></div>
-          <p id="database-count" class="hint"></p>
+          <div class="database-bar">
+            <p id="database-count" class="hint"></p>
+            <div class="database-sort">
+              <span id="database-sort-label">Sort</span>
+              <div class="database-sort-picker">
+                <button type="button" id="database-sort-toggle" class="database-sort-toggle" aria-haspopup="listbox" aria-expanded="false" aria-controls="database-sort-menu" aria-labelledby="database-sort-label database-sort-current">
+                  <span id="database-sort-current">High price</span>
+                </button>
+                <ul id="database-sort-menu" class="database-sort-menu" role="listbox" aria-labelledby="database-sort-label" hidden>
+                  <li role="none"><button type="button" role="option" data-sort="rarity">Rarity</button></li>
+                  <li role="none"><button type="button" role="option" data-sort="name">Name</button></li>
+                  <li role="none"><button type="button" role="option" data-sort="price-asc">Low price</button></li>
+                  <li role="none"><button type="button" role="option" data-sort="price-desc" aria-selected="true">High price</button></li>
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
         <ul id="database-list" class="database-list"></ul>
         <p id="database-empty" class="hint" hidden>No treasures match.</p>
@@ -328,6 +344,6 @@
         </li>
       </ul>
     </dialog>
-    <script src="app.js?v=196"></script>
+    <script src="app.js?v=201"></script>
   </body>
 </html>
