@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=174"),
-      fetch("data/treasures.json?v=174")
+      fetch("data/auction.json?v=175"),
+      fetch("data/treasures.json?v=175")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -2837,11 +2837,13 @@ function matchingTreasures(item) {
   const treasures = state.data && state.data.treasures;
   if (!item || !Array.isArray(treasures) || !treasures.length) return [];
   if (item.price == null && !item.rarity && !item.type && item.size == null) return [];
+  const rarityOpen = !item.rarity || item.rarity === "unknown";
   return treasures.filter((treasure) => {
     if (item.price != null && Number(treasure.price) !== Number(item.price)) return false;
-    if (item.rarity && treasure.rarity !== item.rarity) return false;
+    if (item.rarity && item.rarity !== "unknown" && treasure.rarity !== item.rarity) return false;
     if (item.type && !typeMatches(treasure.type, item.type)) return false;
     if (item.size != null && !treasureMatchesSize(treasure, item.size)) return false;
+    if (rarityOpen && atCategoryMax("rarities", treasure.rarity)) return false;
     return true;
   }).sort((left, right) => left.name.localeCompare(right.name));
 }
@@ -3119,5 +3121,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=174").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=175").catch(() => {});
 }
