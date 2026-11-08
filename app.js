@@ -26,8 +26,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=223"),
-      fetch("data/treasures.json?v=223")
+      fetch("data/auction.json?v=224"),
+      fetch("data/treasures.json?v=224")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -3138,7 +3138,8 @@ function renderEstimate() {
 }
 
 const HOUSE_ITEM_COUNTS = {
-  eruditio: { low: 10, high: 24 }
+  eruditio: { low: 10, high: 24 },
+  dawnlight: { low: 18, high: 26 }
 };
 
 function recommendationBids(board, data) {
@@ -3888,5 +3889,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=223").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=224").catch(() => {});
 }

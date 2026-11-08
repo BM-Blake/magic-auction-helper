@@ -22,7 +22,7 @@ A chip appears when that rarity, type, or size has a count. Tap it to open those
 
 ## Worth and bids
 
-Estimate worth is a range from the treasure catalog. Highest profit is 80% of the estimated worth. Calculated risk is 1.3 times that bid, and Never more than is 1.5 times that bid. In Eruditio, before the treasure total is known, those three prices are 80% of the worth at 10, 17, and 24 treasures.
+Estimate worth is a range from the treasure catalog. Highest profit is 80% of the estimated worth. Calculated risk is 1.3 times that bid, and Never more than is 1.5 times that bid. In Eruditio, before the treasure total is known, those three prices are 80% of the worth at 10, 17, and 24 treasures. Dawnlight uses 18, 22, and 26.
 
 ## Database
 

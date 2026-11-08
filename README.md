@@ -11,7 +11,7 @@ Live page: https://bm-blake.github.io/magic-auction-helper/
 - Exact prices the game has shown
 - A treasure total and maximum counts
 - An estimate of worth from the treasure catalog
-- Three bids under Recommendations: highest profit at 80% of the estimated worth, calculated risk at 1.3 times that bid, and never more than at 1.5 times that bid. Eruditio uses 10, 17, and 24 treasures for those prices until the total is known
+- Three bids under Recommendations: highest profit at 80% of the estimated worth, calculated risk at 1.3 times that bid, and never more than at 1.5 times that bid. Eruditio uses 10, 17, and 24 treasures for those prices until the total is known. Dawnlight uses 18, 22, and 26
 
 The Magic Auction database lists the catalog treasures and filters them by name, rarity, type, and size.
 
