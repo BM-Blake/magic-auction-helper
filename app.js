@@ -23,8 +23,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=189"),
-      fetch("data/treasures.json?v=189")
+      fetch("data/auction.json?v=194"),
+      fetch("data/treasures.json?v=194")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -61,6 +61,9 @@ function bindStaticEvents() {
   $("#close-database").addEventListener("click", showMenu);
   $("#database-query").addEventListener("input", renderDatabase);
   $("#scene-database").addEventListener("click", onDatabaseFilter);
+  $("#open-manual").addEventListener("click", openManual);
+  $("#close-manual").addEventListener("click", closeManual);
+  $("#manual-dialog").addEventListener("click", onManualClick);
   $("#crypto-open").addEventListener("click", openCrypto);
   $("#close-crypto").addEventListener("click", closeCrypto);
   $("#crypto-dialog").addEventListener("click", onCryptoClick);
@@ -85,6 +88,7 @@ function showMenu() {
   $("#fab").hidden = true;
   setSheet(false);
   closeCrypto();
+  closeManual();
   window.scrollTo(0, 0);
 }
 
@@ -95,6 +99,7 @@ function showGame() {
   $("#scene-database").hidden = true;
   $("#fab").hidden = false;
   closeCrypto();
+  closeManual();
   window.scrollTo(0, 0);
 }
 
@@ -106,6 +111,7 @@ function showDatabase() {
   $("#fab").hidden = true;
   setSheet(false);
   closeCrypto();
+  closeManual();
   renderDatabase();
   window.scrollTo(0, 0);
 }
@@ -223,6 +229,20 @@ function databaseRow(treasure) {
   price.textContent = formatCoins(treasure.price);
   row.append(swatch, main, price);
   return row;
+}
+
+function openManual() {
+  const dialog = $("#manual-dialog");
+  if (dialog && !dialog.open) dialog.showModal();
+}
+
+function closeManual() {
+  const dialog = $("#manual-dialog");
+  if (dialog && dialog.open) dialog.close();
+}
+
+function onManualClick(event) {
+  if (event.target === event.currentTarget) closeManual();
 }
 
 function openCrypto() {
@@ -3280,5 +3300,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=189").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=194").catch(() => {});
 }

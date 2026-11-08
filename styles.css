@@ -38,6 +38,10 @@ button { cursor: pointer; }
   padding: calc(16px + var(--safe-top)) 16px calc(96px + var(--safe-bottom));
 }
 
+.app:has(#scene-menu:not([hidden])) {
+  padding-bottom: calc(16px + var(--safe-bottom));
+}
+
 .scene[hidden] { display: none !important; }
 
 .scene-menu {
@@ -60,6 +64,37 @@ button { cursor: pointer; }
   background: var(--bg);
 }
 
+.manual-btn {
+  position: fixed;
+  z-index: 3;
+  top: calc(12px + var(--safe-top));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--raise);
+  color: var(--text);
+}
+
+.manual-btn svg {
+  width: 26px;
+  height: 26px;
+  display: block;
+}
+
+.manual-btn:hover { background: var(--raise-2); }
+
+.app-name {
+  display: block;
+  margin-top: 0;
+  padding: 0 48px;
+  color: var(--text);
+}
+
 .app-title {
   position: absolute;
   top: 0;
@@ -72,9 +107,9 @@ button { cursor: pointer; }
   text-align: center;
 }
 
-.app-title span {
+.app-title > span:last-child {
   display: block;
-  margin-top: 4px;
+  margin-top: 10px;
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 500;
@@ -388,6 +423,7 @@ button { cursor: pointer; }
   font-weight: 650;
 }
 
+.manual-dialog,
 .crypto-dialog {
   width: min(448px, calc(100% - 32px));
   margin: auto;
@@ -399,9 +435,30 @@ button { cursor: pointer; }
   box-shadow: var(--shadow);
 }
 
+.manual-dialog {
+  max-height: min(640px, calc(100vh - 32px));
+  overflow: auto;
+}
+
+.manual-dialog::backdrop,
 .crypto-dialog::backdrop {
   background: rgba(8, 10, 14, 0.72);
 }
+
+.manual-body h3 {
+  margin: 14px 0 4px;
+  font-size: 0.95rem;
+}
+
+.manual-body p,
+.manual-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.manual-note { margin-top: 14px; }
 
 .crypto-dialog .hint {
   margin: 0;
