@@ -41,9 +41,9 @@
         "keywords": "magic auction, magic auction database, magic auction mcgg, magic auction mcgg helper, magic auction mcgg tracker, magic auction mcgg database, magic auction helper, magic auction tracker, magic auction go go, magic chess go go, mcgg magic auction, magic auction treasure database"
       }
     </script>
-    <link rel="icon" href="icon.png?v=187" type="image/png">
+    <link rel="icon" href="icon.png?v=188" type="image/png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=187">
+    <link rel="stylesheet" href="styles.css?v=188">
   </head>
   <body>
     <div class="app">
@@ -129,9 +129,19 @@
             <p class="worth-label">Estimate worth</p>
             <p id="worth-range" class="worth-range">0</p>
           </div>
-          <div class="worth-figure">
-            <p class="worth-label">Recommended bid</p>
-            <p id="recommended-bid" class="worth-range">0</p>
+          <div class="bid-levels">
+            <div class="worth-figure">
+              <p class="worth-label">Highest profit</p>
+              <p id="recommended-bid" class="worth-range">0</p>
+            </div>
+            <div class="worth-figure">
+              <p class="worth-label">Calculated risk</p>
+              <p id="bid-risk" class="worth-range">0</p>
+            </div>
+            <div class="worth-figure">
+              <p class="worth-label">Never more than</p>
+              <p id="bid-cap" class="worth-range">0</p>
+            </div>
           </div>
         </section>
         <div class="known-picker" id="known-picker">
@@ -240,6 +250,6 @@
         </li>
       </ul>
     </dialog>
-    <script src="app.js?v=187"></script>
+    <script src="app.js?v=188"></script>
   </body>
 </html>

@@ -537,6 +537,22 @@ h2 { margin: 0 0 14px; font-weight: 650; font-size: 1rem; }
   white-space: nowrap;
 }
 
+.bid-levels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.bid-levels .worth-label {
+  min-height: 2.5em;
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
+.bid-levels .worth-range {
+  font-size: clamp(0.95rem, 3.6vw, 1.25rem);
+}
+
 .known-picker {
   position: relative;
   margin-top: 12px;

@@ -23,8 +23,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=187"),
-      fetch("data/treasures.json?v=187")
+      fetch("data/auction.json?v=188"),
+      fetch("data/treasures.json?v=188")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -2590,7 +2590,10 @@ function renderEstimate() {
     : min === max
       ? formatCoins(min)
       : `${formatCoins(min)} – ${formatCoins(max)}`;
-  $("#recommended-bid").textContent = formatCoins(recommendedBid(state.board, state.data));
+  const bid = recommendedBid(state.board, state.data);
+  $("#recommended-bid").textContent = formatCoins(bid);
+  $("#bid-risk").textContent = formatCoins(Math.round(bid * 1.3));
+  $("#bid-cap").textContent = formatCoins(Math.round(bid * 1.5));
 }
 
 function recommendedBid(board, data) {
@@ -3277,5 +3280,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=187").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=188").catch(() => {});
 }
