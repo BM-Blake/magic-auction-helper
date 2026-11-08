@@ -26,8 +26,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=219"),
-      fetch("data/treasures.json?v=219")
+      fetch("data/auction.json?v=223"),
+      fetch("data/treasures.json?v=223")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1695,6 +1695,10 @@ function onSummaryClick(event) {
   state.detailOpen = state.selected && state.selected.id === "unknown"
     ? (needsAnchorChoice(state.selected.kind) ? state.selected.kind : (blockingKind(state.selected.kind) || state.selected.kind))
     : null;
+  if (state.selected && state.selected.id !== "unknown") {
+    const count = matchingItems().length;
+    if (count > 1 && count <= 5) state.detailOpen = "items";
+  }
   render();
 }
 
@@ -1865,7 +1869,11 @@ function endGame() {
 
 function render() {
   if (state.itemDraft && state.itemDraft.id !== state.detailItem) state.itemDraft = null;
-  if (resolveUnknown() || assignOnlyPossibleRarity() || resolveExactItems()) persist();
+  const deduced = fillOnlyPossibleFacts();
+  const resolved = resolveUnknown();
+  const assigned = assignOnlyPossibleRarity();
+  const exact = resolveExactItems();
+  if (deduced || resolved || assigned || exact) persist();
   const house = state.data.houses.find((entry) => entry.id === state.board.house);
   const houseName = $("#house-name");
   if (houseName) houseName.textContent = house ? house.name : "";
@@ -2369,7 +2377,9 @@ function renderDetail() {
     pairRow = null;
     openChoices = null;
   };
-  levels.forEach((field) => {
+  const showFactFilters = unknown || items.length > 5;
+  if (!showFactFilters && state.detailOpen && state.detailOpen !== "items") state.detailOpen = null;
+  if (showFactFilters) levels.forEach((field) => {
     const choiceGroups = asksForChoice(field) ? groupedDonors(parent, state.selected.kind, field) : null;
     if (choiceGroups && !choiceGroups.length) return;
     const sizeLocked = field === "sizes" && parent.type === "collection";
@@ -2392,8 +2402,15 @@ function renderDetail() {
       ? subcategoryBlock(state.selected.kind, parent, choiceGroups, (group) => `${group.field}:${group.id}`)
       : detailChoices(field, parent);
   });
-  flushPair();
-  if (!unknown && items.length) appendItemEditors(list, items);
+  if (showFactFilters) flushPair();
+  if (!unknown && items.length === 1) {
+    if (state.itemDraft && state.itemDraft.id !== items[0].id) state.itemDraft = null;
+    state.detailItem = items[0].id;
+    const block = document.createElement("li");
+    block.className = "detail-single-item";
+    block.appendChild(itemCard(items[0]));
+    list.appendChild(block);
+  } else if (!unknown && items.length) appendItemEditors(list, items);
 }
 
 function detailChoices(field, parent) {
@@ -2729,32 +2746,15 @@ function itemFactSelect(item, field, locked) {
   blank.value = "";
   blank.textContent = "Unknown";
   select.appendChild(blank);
-  if (field === "rarity") {
-    state.data.rarities.forEach((entry) => {
-      if (entry.id !== item.rarity && (atCategoryMax("rarities", entry.id) || !catalogSupports(choiceFacts(item, "rarity", entry.id), heldFacts(item, "rarity")))) return;
-      const option = document.createElement("option");
-      option.value = entry.id;
-      option.textContent = entry.name;
-      select.appendChild(option);
-    });
-    select.value = item.rarity || "";
-  } else if (field === "type") {
-    state.data.types.forEach((entry) => {
-      if (entry.id !== item.type && (atCategoryMax("types", entry.id) || !catalogSupports(choiceFacts(item, "type", entry.id), heldFacts(item, "type")))) return;
-      const option = document.createElement("option");
-      option.value = entry.id;
-      option.textContent = entry.name;
-      select.appendChild(option);
-    });
-    select.value = item.type || "";
-  } else {
-    state.data.sizePresets.forEach((size) => {
-      if (sizeKey(size) !== sizeKey(item.size) && (atCategoryMax("sizes", size) || !catalogSupports(choiceFacts(item, "size", size), heldFacts(item, "size")))) return;
-      const option = document.createElement("option");
-      option.value = String(size);
-      option.textContent = String(size);
-      select.appendChild(option);
-    });
+  possibleFactIds(item, field).forEach((id) => {
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = factOptionLabel(field, id);
+    select.appendChild(option);
+  });
+  if (field === "rarity") select.value = item.rarity || "";
+  else if (field === "type") select.value = item.type || "";
+  else {
     select.value = item.size == null ? "" : sizeKey(item.size);
     if (item.type === "collection") {
       select.value = collectionShape();
@@ -2764,6 +2764,86 @@ function itemFactSelect(item, field, locked) {
   if (locked) select.disabled = true;
   label.append(name, select);
   return label;
+}
+
+function possibleFactIds(item, field) {
+  if (field === "rarity") {
+    return state.data.rarities.filter((entry) => entry.id === item.rarity || (!atCategoryMax("rarities", entry.id) && catalogSupports(choiceFacts(item, "rarity", entry.id), heldFacts(item, "rarity")))).map((entry) => entry.id);
+  }
+  if (field === "type") {
+    return state.data.types.filter((entry) => entry.id === item.type || (!atCategoryMax("types", entry.id) && catalogSupports(choiceFacts(item, "type", entry.id), heldFacts(item, "type")))).map((entry) => entry.id);
+  }
+  return state.data.sizePresets.map((size) => String(size)).filter((size) => sizeKey(size) === sizeKey(item.size) || (!atCategoryMax("sizes", size) && catalogSupports(choiceFacts(item, "size", size), heldFacts(item, "size"))));
+}
+
+function factOptionLabel(field, id) {
+  if (field === "size") return id;
+  const list = field === "rarity" ? state.data.rarities : state.data.types;
+  const entry = list.find((option) => option.id === id);
+  return entry ? entry.name : id;
+}
+
+function itemFactSet(item, field) {
+  if (field === "rarity") return Boolean(item.rarity);
+  if (field === "type") return Boolean(item.type);
+  return item.size != null && item.size !== "";
+}
+
+function readItemFact(item, field) {
+  if (field === "rarity") return item.rarity || "";
+  if (field === "type") return item.type || "";
+  return item.size == null ? "" : sizeKey(item.size);
+}
+
+function writeItemFact(item, field, id) {
+  if (field === "rarity") item.rarity = id;
+  else if (field === "type") {
+    item.type = id;
+    if (id === "collection") item.size = collectionShape();
+  } else item.size = id;
+}
+
+function fillViewFacts(view) {
+  let changed = false;
+  let progress = true;
+  while (progress) {
+    progress = false;
+    ["rarity", "type", "size"].forEach((field) => {
+      if (itemFactSet(view, field)) return;
+      const options = possibleFactIds(view, field);
+      if (options.length !== 1) return;
+      writeItemFact(view, field, options[0]);
+      progress = true;
+      changed = true;
+    });
+  }
+  return changed;
+}
+
+function fillOnlyPossibleFacts() {
+  if (!state.board) return false;
+  let changed = false;
+  let progress = true;
+  while (progress) {
+    progress = false;
+    state.board.items.forEach((item) => {
+      if (exactTreasure(item)) return;
+      if (fillViewFacts(item)) {
+        changed = true;
+        progress = true;
+      }
+      const draft = itemDraftFor(item.id);
+      if (!draft || draft.snapped) return;
+      ["rarity", "type", "size"].forEach((field) => {
+        if (itemFactSet(draft.view, field) || !itemFactSet(item, field)) return;
+        const value = readItemFact(item, field);
+        writeItemFact(draft.view, field, value);
+        writeItemFact(draft.saved, field, value);
+      });
+      fillViewFacts(draft.view);
+    });
+  }
+  return changed;
 }
 
 function onItemEdit(event) {
@@ -3808,5 +3888,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=219").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=223").catch(() => {});
 }

@@ -1085,6 +1085,10 @@ legend {
 
 .detail-subitem > .item-card { margin: 0 0 8px 18px; }
 
+.detail-single-item { margin-top: 4px; list-style: none; }
+
+.detail-single-item > .item-card { margin: 0; }
+
 .item-card {
   display: grid;
   grid-template-columns: 1fr 1fr;
