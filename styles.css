@@ -543,7 +543,11 @@ h2 { margin: 0 0 14px; font-weight: 650; font-size: 1rem; }
   gap: 10px;
 }
 
-.bid-levels .worth-label {
+.bid-levels > .worth-label {
+  grid-column: 1 / -1;
+}
+
+.bid-levels .worth-figure .worth-label {
   min-height: 2.5em;
   font-size: 0.68rem;
   line-height: 1.25;
