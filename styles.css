@@ -965,7 +965,17 @@ select.group-use {
   font-size: 16px;
 }
 
-.johnson-note { margin: 0 0 10px; }
+.johnson-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.johnson-note { margin: 0; }
+
+.johnson-head .text-btn { flex: none; }
 
 .johnson-row {
   display: grid;

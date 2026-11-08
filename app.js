@@ -22,8 +22,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=175"),
-      fetch("data/treasures.json?v=175")
+      fetch("data/auction.json?v=176"),
+      fetch("data/treasures.json?v=176")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -228,9 +228,18 @@ function isJohnsonTrio(groups) {
 function buildJohnsonCard(groups) {
   const entry = document.createElement("div");
   entry.className = "entry johnson-counts";
+  const head = document.createElement("div");
+  head.className = "johnson-head";
   const note = document.createElement("p");
   note.className = "hint johnson-note";
   note.textContent = "Each number is how many there are, and their maximum.";
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "text-btn";
+  remove.dataset.removeJohnson = "true";
+  remove.textContent = "Remove";
+  remove.setAttribute("aria-label", "Remove gray, green, and blue");
+  head.append(note, remove);
   const row = document.createElement("div");
   row.className = "johnson-row";
   groups.forEach((group, index) => {
@@ -258,7 +267,7 @@ function buildJohnsonCard(groups) {
     label.append(name, input);
     row.appendChild(label);
   });
-  entry.append(note, row);
+  entry.append(head, row);
   return entry;
 }
 
@@ -945,6 +954,10 @@ function setSheet(open) {
 }
 
 function onSheetClick(event) {
+  if (event.target.closest("[data-remove-johnson]")) {
+    removeJohnsonCard();
+    return;
+  }
   const remove = event.target.closest("[data-remove-group]");
   if (remove) {
     removeGroup(Number(remove.dataset.removeGroup));
@@ -1120,6 +1133,15 @@ function removeGroup(index) {
   if (state.groups.length < 2) return;
   captureInputs();
   state.groups.splice(index, 1);
+  renderGroups();
+  hideError();
+}
+
+function removeJohnsonCard() {
+  if (!isJohnsonTrio(state.groups)) return;
+  captureInputs();
+  state.groups.splice(0, 3);
+  if (!state.groups.length) state.groups = [emptyGroup()];
   renderGroups();
   hideError();
 }
@@ -3121,5 +3143,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=175").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=176").catch(() => {});
 }
