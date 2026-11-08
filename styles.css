@@ -1113,6 +1113,11 @@ legend {
 
 .item-card-actions .item-name { margin-right: auto; }
 
+.item-card-actions .item-name.is-placeholder {
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .item-save,
 .item-undo {
   width: 32px;
@@ -1132,8 +1137,6 @@ legend {
   color: var(--gold-ink);
   font-weight: 700;
 }
-
-.item-save:disabled { opacity: 0.35; cursor: default; }
 
 .item-name-row .item-name {
   flex: 1;

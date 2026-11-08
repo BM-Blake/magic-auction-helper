@@ -26,8 +26,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=218"),
-      fetch("data/treasures.json?v=218")
+      fetch("data/auction.json?v=219"),
+      fetch("data/treasures.json?v=219")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -2617,14 +2617,12 @@ function itemCard(item) {
 function itemCardActions(item, view, snapped) {
   const row = document.createElement("div");
   row.className = "item-card-actions";
-  if (snapped) {
-    const title = document.createElement("p");
-    title.className = "item-name";
-    title.textContent = view.catalogName;
-    row.appendChild(title);
-    row.appendChild(itemUndoButton());
-  }
-  row.appendChild(itemSaveButton(item));
+  const title = document.createElement("p");
+  title.className = snapped ? "item-name" : "item-name is-placeholder";
+  title.textContent = snapped && view.catalogName ? view.catalogName : "Unknown";
+  row.appendChild(title);
+  if (snapped) row.appendChild(itemUndoButton());
+  if (itemDraftDirty(item)) row.appendChild(itemSaveButton(item));
   return row;
 }
 
@@ -2647,7 +2645,6 @@ function itemSaveButton(item) {
   button.type = "button";
   button.className = "item-save";
   button.textContent = "✓";
-  button.disabled = !itemDraftDirty(item);
   button.setAttribute("aria-label", "Save");
   button.addEventListener("pointerdown", (event) => {
     event.preventDefault();
@@ -2915,9 +2912,15 @@ function applyTreasure(view, treasure) {
 }
 
 function refreshItemSave(id) {
-  const button = document.querySelector(`.item-card[data-item="${id}"] .item-save`);
+  const row = document.querySelector(`.item-card[data-item="${id}"] .item-card-actions`);
   const item = state.board && state.board.items.find((entry) => entry.id === id);
-  if (button && item) button.disabled = !itemDraftDirty(item);
+  if (!row || !item) return;
+  const existing = row.querySelector(".item-save");
+  if (itemDraftDirty(item)) {
+    if (!existing) row.appendChild(itemSaveButton(item));
+    return;
+  }
+  if (existing) existing.remove();
 }
 
 function commitItemCard(id) {
@@ -3805,5 +3808,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=218").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=219").catch(() => {});
 }
