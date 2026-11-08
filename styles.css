@@ -445,9 +445,47 @@ button { cursor: pointer; }
   background: rgba(8, 10, 14, 0.72);
 }
 
-.manual-body h3 {
-  margin: 14px 0 4px;
+.manual-item + .manual-item { margin-top: 2px; }
+
+.manual-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
   font-size: 0.95rem;
+  font-weight: 650;
+  text-align: left;
+}
+
+.manual-arrow {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-top: -1px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+}
+
+.manual-toggle[aria-expanded="true"] .manual-arrow {
+  margin-top: -3px;
+  transform: rotate(45deg);
+}
+
+.manual-panel { padding: 0 0 8px 18px; }
+
+.manual-panel[hidden] { display: none; }
+
+.manual-sub { margin-top: 0; }
+
+.manual-sub .manual-toggle {
+  min-height: 36px;
+  font-size: 0.9rem;
 }
 
 .manual-body p,

@@ -23,8 +23,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=194"),
-      fetch("data/treasures.json?v=194")
+      fetch("data/auction.json?v=195"),
+      fetch("data/treasures.json?v=195")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -242,6 +242,14 @@ function closeManual() {
 }
 
 function onManualClick(event) {
+  const toggle = event.target.closest(".manual-toggle");
+  if (toggle && event.currentTarget.contains(toggle)) {
+    const panel = document.getElementById(toggle.getAttribute("aria-controls"));
+    const open = toggle.getAttribute("aria-expanded") === "true";
+    toggle.setAttribute("aria-expanded", open ? "false" : "true");
+    if (panel) panel.hidden = open;
+    return;
+  }
   if (event.target === event.currentTarget) closeManual();
 }
 
@@ -3300,5 +3308,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=194").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=195").catch(() => {});
 }
