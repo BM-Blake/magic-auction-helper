@@ -1,7 +1,7 @@
 {
   "name": "Magic Auction Helper",
   "short_name": "Auction",
-  "description": "Fan-made Magic Auction tracker for Magic Chess: Go Go.",
+  "description": "Fan-made Magic Auction tracker and database for Magic Chess: Go Go.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -9,7 +9,7 @@
   "theme_color": "#101218",
   "icons": [
     {
-      "src": "icon.png?v=177",
+      "src": "icon.png?v=186",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"

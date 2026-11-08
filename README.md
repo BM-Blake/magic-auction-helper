@@ -1,6 +1,6 @@
 # Magic Auction Helper
 
-Fan-made Magic Auction tracker for Magic Chess: Go Go, season 7.1. It is a static page, so there is no build step, and it keeps working after the first load.
+Fan-made Magic Auction tracker and database for Magic Chess: Go Go, season 7.1. It is a static page, so there is no build step, and it keeps working after the first load.
 
 Live page: https://bm-blake.github.io/magic-auction-helper/
 
@@ -11,6 +11,8 @@ Live page: https://bm-blake.github.io/magic-auction-helper/
 - Exact prices the game has shown
 - A treasure total and maximum counts
 - An estimate of worth from the treasure catalog
+
+The Database lists the catalog treasures and filters them by name, rarity, type, and size.
 
 A treasure with a missing rarity, type, or size stays under Unknown until that detail is filled in. Opening a rarity, type, or size lists the treasures in that group, so each one can keep its own price and other details.
 

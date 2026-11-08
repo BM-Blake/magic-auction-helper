@@ -7,7 +7,8 @@ const state = {
   selected: null,
   detailOpen: null,
   groups: [emptyGroup()],
-  johnsonIntroUsed: false
+  johnsonIntroUsed: false,
+  database: { rarity: "", type: "", size: "", open: { rarity: false, type: false, size: false } }
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -22,8 +23,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=177"),
-      fetch("data/treasures.json?v=177")
+      fetch("data/auction.json?v=186"),
+      fetch("data/treasures.json?v=186")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -56,6 +57,10 @@ function bindStaticEvents() {
   document.addEventListener("keydown", onPickerKey);
   $("#end-game").addEventListener("click", endGame);
   $("#game-start").addEventListener("click", showGame);
+  $("#open-database").addEventListener("click", showDatabase);
+  $("#close-database").addEventListener("click", showMenu);
+  $("#database-query").addEventListener("input", renderDatabase);
+  $("#scene-database").addEventListener("click", onDatabaseFilter);
   $("#crypto-open").addEventListener("click", openCrypto);
   $("#close-crypto").addEventListener("click", closeCrypto);
   $("#crypto-dialog").addEventListener("click", onCryptoClick);
@@ -76,6 +81,7 @@ function showMenu() {
   closePickers();
   $("#scene-menu").hidden = false;
   $("#scene-tracker").hidden = true;
+  $("#scene-database").hidden = true;
   $("#fab").hidden = true;
   setSheet(false);
   closeCrypto();
@@ -86,9 +92,137 @@ function showGame() {
   closePickers();
   $("#scene-menu").hidden = true;
   $("#scene-tracker").hidden = false;
+  $("#scene-database").hidden = true;
   $("#fab").hidden = false;
   closeCrypto();
   window.scrollTo(0, 0);
+}
+
+function showDatabase() {
+  closePickers();
+  $("#scene-menu").hidden = true;
+  $("#scene-tracker").hidden = true;
+  $("#scene-database").hidden = false;
+  $("#fab").hidden = true;
+  setSheet(false);
+  closeCrypto();
+  renderDatabase();
+  window.scrollTo(0, 0);
+}
+
+function onDatabaseFilter(event) {
+  const toggle = event.target.closest("[data-database-toggle]");
+  if (toggle) {
+    const kind = toggle.dataset.databaseToggle;
+    state.database.open[kind] = !state.database.open[kind];
+    renderDatabase();
+    return;
+  }
+  const button = event.target.closest("[data-database-filter]");
+  if (!button) return;
+  const kind = button.dataset.databaseFilter;
+  const id = button.dataset.id;
+  state.database[kind] = state.database[kind] === id ? "" : id;
+  renderDatabase();
+}
+
+function renderDatabase() {
+  const filters = state.database;
+  const query = ($("#database-query").value || "").trim().toLowerCase();
+  setDatabasePanel("rarity", filters.rarity ? rarityName(filters.rarity) : "Any");
+  setDatabasePanel("type", filters.type ? typeName(filters.type) : "Any");
+  setDatabasePanel("size", filters.size || "Any");
+  renderDatabaseChoices($("#database-rarities"), "rarity", state.data.rarities.map((entry) => ({
+    id: entry.id,
+    label: entry.name,
+    color: entry.color,
+    ink: entry.ink,
+    swatch: true
+  })), filters.rarity);
+  renderDatabaseChoices($("#database-types"), "type", state.data.types.map((entry) => ({
+    id: entry.id,
+    label: entry.name
+  })), filters.type);
+  renderDatabaseChoices($("#database-sizes"), "size", orderedSizePresets().map((size) => ({
+    id: String(size),
+    label: String(size)
+  })), filters.size);
+  const order = state.data.rarities.map((entry) => entry.id);
+  const matches = state.data.treasures.filter((treasure) => {
+    if (query && !treasure.name.toLowerCase().includes(query)) return false;
+    if (filters.rarity && treasure.rarity !== filters.rarity) return false;
+    if (filters.type && !typeMatches(treasure.type, filters.type)) return false;
+    if (filters.size && !treasureMatchesSize(treasure, filters.size)) return false;
+    return true;
+  }).sort((left, right) => {
+    const rarity = order.indexOf(left.rarity) - order.indexOf(right.rarity);
+    return rarity || left.name.localeCompare(right.name);
+  });
+  const list = $("#database-list");
+  const fragment = document.createDocumentFragment();
+  matches.forEach((treasure) => fragment.appendChild(databaseRow(treasure)));
+  list.replaceChildren(fragment);
+  const count = $("#database-count");
+  count.textContent = matches.length === 1 ? "1 treasure" : `${matches.length} treasures`;
+  $("#database-empty").hidden = matches.length > 0;
+}
+
+function setDatabasePanel(kind, label) {
+  const button = document.querySelector(`[data-database-toggle="${kind}"]`);
+  if (!button) return;
+  const open = Boolean(state.database.open[kind]);
+  button.setAttribute("aria-expanded", open ? "true" : "false");
+  button.classList.toggle("is-open", open);
+  button.querySelector("[data-database-value]").textContent = label;
+  const panel = document.getElementById(button.getAttribute("aria-controls"));
+  if (panel) panel.hidden = !open;
+}
+
+function renderDatabaseChoices(container, kind, choices, selected) {
+  container.replaceChildren();
+  choices.forEach((choice) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip";
+    button.dataset.databaseFilter = kind;
+    button.dataset.id = choice.id;
+    const on = selected === choice.id;
+    button.classList.toggle("is-on", on);
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+    if (choice.swatch) {
+      button.classList.add("is-swatch");
+      button.style.background = choice.color;
+      button.style.color = choice.ink;
+      button.classList.toggle("is-selected", on);
+      button.setAttribute("aria-label", choice.label);
+      button.title = choice.label;
+    }
+    button.textContent = choice.swatch ? "" : choice.label;
+    container.appendChild(button);
+  });
+}
+
+function databaseRow(treasure) {
+  const rarity = state.data.rarities.find((entry) => entry.id === treasure.rarity);
+  const row = document.createElement("li");
+  row.className = "database-item";
+  const swatch = document.createElement("span");
+  swatch.className = "database-swatch";
+  swatch.style.background = rarity ? rarity.color : "transparent";
+  const main = document.createElement("span");
+  const name = document.createElement("span");
+  name.className = "database-name";
+  name.textContent = treasure.name;
+  const meta = document.createElement("span");
+  meta.className = "database-meta";
+  const shape = treasureShape(treasure);
+  meta.textContent = [rarityName(treasure.rarity), typeName(treasure.type), shape].filter(Boolean).join(" · ");
+  main.append(name, meta);
+  const price = document.createElement("span");
+  price.className = "database-price";
+  price.textContent = formatCoins(treasure.price);
+  row.append(swatch, main, price);
+  return row;
 }
 
 function openCrypto() {
@@ -3143,5 +3277,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=177").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=186").catch(() => {});
 }
