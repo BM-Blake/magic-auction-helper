@@ -25,8 +25,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=213"),
-      fetch("data/treasures.json?v=213")
+      fetch("data/auction.json?v=214"),
+      fetch("data/treasures.json?v=214")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1766,13 +1766,32 @@ function increaseChild(facts, field, id) {
     .sort((left, right) => detailSpecificity(left) - detailSpecificity(right));
   if (revealingNewTreasure(facts, field)) {
     if (blockedByMaxedCategory(facts)) return false;
-    const created = freshFacts(facts, field, id);
-    if (!created) return false;
-    state.board.items.push(blankItem(created));
-    return true;
+    return createTreasure(facts, field, id);
   }
-  if (!open.length) return false;
-  return assignToDonor(open[0], field, id);
+  if (open.length) return assignToDonor(open[0], field, id);
+  if (!replacingUnderMax(facts, field, id)) return false;
+  return createTreasure(facts, field, id);
+}
+
+function replacingUnderMax(facts, field, id) {
+  const total = state.board && state.board.treasureTotal;
+  if (Number.isInteger(total) || !Number.isInteger(storedCategoryMax(field, id))) return false;
+  if (blockedByMaxedCategory(facts)) return false;
+  return ["rarities", "types", "sizes"].every((kind) => kind === field || !factSpecified(facts, kind));
+}
+
+function storedCategoryMax(field, id) {
+  if (!state.board || !state.board.maxCounts) return null;
+  const key = field === "sizes" ? sizeKey(id) : String(id);
+  const max = state.board.maxCounts[field]?.[key];
+  return Number.isInteger(max) ? max : null;
+}
+
+function createTreasure(facts, field, id) {
+  const created = freshFacts(facts, field, id);
+  if (!created) return false;
+  state.board.items.push(blankItem(created));
+  return true;
 }
 
 function revealingNewTreasure(facts, field) {
@@ -2132,7 +2151,8 @@ function canAssign(facts, field, id) {
   const pool = Object.assign({}, facts);
   writeDetailFact(pool, field, "unknown");
   if (revealingNewTreasure(facts, field)) return !blockedByMaxedCategory(facts) && freshFacts(facts, field, id) != null;
-  return openDonors(pool, field, id).length > 0;
+  if (openDonors(pool, field, id).length > 0) return true;
+  return replacingUnderMax(facts, field, id) && freshFacts(facts, field, id) != null;
 }
 
 function slotsLeft() {
@@ -3510,5 +3530,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=213").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=214").catch(() => {});
 }
