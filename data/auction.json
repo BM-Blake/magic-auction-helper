@@ -8,9 +8,9 @@
     "howToEdit": "Treasure prices live in data/treasures.json. The estimates rows are no longer used."
   },
   "houses": [
-    { "id": "eruditio", "name": "Eruditio", "minPrice": 4000, "maxPrice": 300000 },
-    { "id": "dawnlight", "name": "Dawnlight", "minPrice": 15000, "maxPrice": 1000000 },
-    { "id": "world", "name": "World", "minPrice": 15000, "maxPrice": 2500000 },
+    { "id": "eruditio", "name": "Eruditio", "minPrice": 4000, "maxPrice": 300000, "itemTotals": [11, 15, 24, 19, 13, 17, 13, 10, 14, 20] },
+    { "id": "dawnlight", "name": "Dawnlight", "minPrice": 15000, "maxPrice": 1000000, "itemTotals": [19, 26, 18, 25, 21, 20, 18, 23, 20, 19] },
+    { "id": "world", "name": "World", "minPrice": 15000, "maxPrice": 2500000, "itemTotals": [26, 20, 26, 29, 23, 28, 27, 23, 30, 20] },
     { "id": "cosmic", "name": "Cosmic", "minPrice": 50000, "maxPrice": 5000000 }
   ],
   "heroes": [

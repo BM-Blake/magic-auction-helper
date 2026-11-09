@@ -1,6 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "magic-auction-items-v1";
+const MATCH_KEY = "magic-auction-matches-v1";
 const state = {
   data: null,
   board: null,
@@ -9,6 +10,7 @@ const state = {
   detailItem: null,
   detailSub: null,
   itemDraft: null,
+  historyOpen: null,
   groups: [emptyGroup()],
   johnsonIntroUsed: false,
   database: { rarity: "", type: "", size: "", sort: "price-desc", open: { rarity: false, type: false, size: false } }
@@ -26,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=224"),
-      fetch("data/treasures.json?v=224")
+      fetch("data/auction.json?v=238"),
+      fetch("data/treasures.json?v=238")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -62,6 +64,9 @@ function bindStaticEvents() {
   $("#game-start").addEventListener("click", showGame);
   $("#open-database").addEventListener("click", showDatabase);
   $("#close-database").addEventListener("click", showMenu);
+  $("#open-history").addEventListener("click", showHistory);
+  $("#close-history").addEventListener("click", showMenu);
+  $("#match-list").addEventListener("click", onMatchHistoryClick);
   $("#database-query").addEventListener("input", renderDatabase);
   $("#database-sort-toggle").addEventListener("click", onDatabaseSortToggle);
   $("#database-sort-menu").addEventListener("click", onDatabaseSortPick);
@@ -90,6 +95,7 @@ function showMenu() {
   $("#scene-menu").hidden = false;
   $("#scene-tracker").hidden = true;
   $("#scene-database").hidden = true;
+  $("#scene-history").hidden = true;
   $("#fab").hidden = true;
   setSheet(false);
   closeCrypto();
@@ -102,6 +108,7 @@ function showGame() {
   $("#scene-menu").hidden = true;
   $("#scene-tracker").hidden = false;
   $("#scene-database").hidden = true;
+  $("#scene-history").hidden = true;
   $("#fab").hidden = false;
   closeCrypto();
   closeManual();
@@ -113,6 +120,7 @@ function showDatabase() {
   $("#scene-menu").hidden = true;
   $("#scene-tracker").hidden = true;
   $("#scene-database").hidden = false;
+  $("#scene-history").hidden = true;
   $("#fab").hidden = true;
   setSheet(false);
   closeCrypto();
@@ -1849,9 +1857,197 @@ function childUnset(item, field) {
   return item.size == null;
 }
 
+function showHistory() {
+  closePickers();
+  $("#scene-menu").hidden = true;
+  $("#scene-tracker").hidden = true;
+  $("#scene-database").hidden = true;
+  $("#scene-history").hidden = false;
+  $("#fab").hidden = true;
+  setSheet(false);
+  closeCrypto();
+  closeManual();
+  renderMatchHistory();
+  window.scrollTo(0, 0);
+}
+
+function loadMatches() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MATCH_KEY) || "[]");
+    if (!Array.isArray(saved)) return [];
+    return saved.filter((match) => match && typeof match.id === "string" && typeof match.endedAt === "string");
+  } catch (error) {
+    return [];
+  }
+}
+
+function saveMatches(matches) {
+  localStorage.setItem(MATCH_KEY, JSON.stringify(matches));
+}
+
+function matchWorthRecording() {
+  if (!state.board) return false;
+  const total = state.board.treasureTotal;
+  return state.board.items.length > 0 || (Number.isInteger(total) && total > 0);
+}
+
+function recordMatch() {
+  if (!matchWorthRecording()) return;
+  const board = state.board;
+  const worthMin = catalogWorth(board, state.data, false);
+  const worthMax = Math.max(worthMin, catalogWorth(board, state.data, true));
+  const total = board.treasureTotal;
+  const match = {
+    id: createId(),
+    endedAt: new Date().toISOString(),
+    house: board.house,
+    hero: board.hero,
+    treasureTotal: Number.isInteger(total) && total > 0 ? total : null,
+    itemCount: board.items.length,
+    worthMin,
+    worthMax,
+    bids: recommendationBids(board, state.data),
+    band: houseItemBand(board),
+    maxCounts: {
+      rarities: Object.assign({}, board.maxCounts && board.maxCounts.rarities),
+      types: Object.assign({}, board.maxCounts && board.maxCounts.types),
+      sizes: Object.assign({}, board.maxCounts && board.maxCounts.sizes)
+    },
+    items: board.items.map((item) => ({
+      rarity: item.rarity || "",
+      type: item.type || "",
+      size: item.size == null || item.size === "" ? null : item.size,
+      price: item.price == null ? null : item.price,
+      name: item.catalogName || ""
+    }))
+  };
+  const matches = loadMatches();
+  matches.push(match);
+  saveMatches(matches);
+}
+
+function onMatchHistoryClick(event) {
+  const remove = event.target.closest("[data-remove-match]");
+  if (remove) {
+    const id = remove.dataset.removeMatch;
+    const matches = loadMatches();
+    const match = matches.find((entry) => entry.id === id);
+    const house = match ? matchHouseName(match.house) : "this match";
+    if (!window.confirm(`Remove the ${house} round from match history?`)) return;
+    saveMatches(matches.filter((entry) => entry.id !== id));
+    if (state.historyOpen === id) state.historyOpen = null;
+    renderMatchHistory();
+    return;
+  }
+  const opener = event.target.closest("[data-open-match]");
+  if (!opener) return;
+  const id = opener.dataset.openMatch;
+  state.historyOpen = state.historyOpen === id ? null : id;
+  renderMatchHistory();
+}
+
+function matchHouseName(id) {
+  const house = state.data && state.data.houses.find((entry) => entry.id === id);
+  return house ? house.name : id || "Unknown house";
+}
+
+function matchHeroName(id) {
+  const hero = state.data && state.data.heroes.find((entry) => entry.id === id);
+  return hero ? hero.name : id || "Unknown hero";
+}
+
+function formatMatchWhen(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function renderMatchHistory() {
+  const list = $("#match-list");
+  const empty = $("#match-empty");
+  if (!list || !empty) return;
+  const matches = loadMatches().slice().reverse();
+  empty.hidden = matches.length > 0;
+  list.replaceChildren();
+  matches.forEach((match) => list.appendChild(matchCard(match)));
+}
+
+function matchCard(match) {
+  const open = state.historyOpen === match.id;
+  const card = document.createElement("li");
+  card.className = open ? "match-card is-open" : "match-card";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "match-open";
+  button.dataset.openMatch = match.id;
+  button.setAttribute("aria-expanded", open ? "true" : "false");
+  const title = document.createElement("span");
+  title.className = "match-title";
+  const total = Number.isInteger(match.treasureTotal) ? `${match.treasureTotal} treasures` : "Total unknown";
+  title.textContent = `${matchHouseName(match.house)} · ${total}`;
+  const meta = document.createElement("span");
+  meta.className = "match-meta";
+  const bids = match.bids || {};
+  meta.textContent = `${formatMatchWhen(match.endedAt)} · ${matchHeroName(match.hero)} · ${formatCoins(bids.profit || 0)} / ${formatCoins(bids.risk || 0)} / ${formatCoins(bids.cap || 0)}`;
+  button.append(title, detailArrow(), meta);
+  card.appendChild(button);
+  if (open) card.appendChild(matchDetail(match));
+  return card;
+}
+
+function matchDetail(match) {
+  const detail = document.createElement("div");
+  detail.className = "match-detail";
+  const worth = document.createElement("p");
+  const max = Math.max(match.worthMin || 0, match.worthMax || 0);
+  const min = match.worthMin || 0;
+  const worthText = max === 0 ? "0" : min === max ? formatCoins(min) : `${formatCoins(min)} – ${formatCoins(max)}`;
+  worth.textContent = `Estimate worth ${worthText}. Revealed ${match.itemCount || 0}.`;
+  detail.appendChild(worth);
+  const bids = match.bids || {};
+  const prices = document.createElement("p");
+  prices.textContent = `Safe bet ${formatCoins(bids.profit || 0)}. Calculated risk ${formatCoins(bids.risk || 0)}. Never more than ${formatCoins(bids.cap || 0)}.`;
+  detail.appendChild(prices);
+  const items = Array.isArray(match.items) ? match.items : [];
+  if (items.length) {
+    const list = document.createElement("ul");
+    list.className = "match-items";
+    items.forEach((item) => {
+      const row = document.createElement("li");
+      const parts = [];
+      if (item.name) parts.push(item.name);
+      if (item.rarity) parts.push(rarityName(item.rarity));
+      if (item.type) parts.push(typeName(item.type));
+      if (item.size) parts.push(String(item.size));
+      if (item.price != null) parts.push(formatCoins(item.price));
+      row.textContent = parts.join(" · ") || "Unknown";
+      list.appendChild(row);
+    });
+    detail.appendChild(list);
+  }
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "ghost match-remove";
+  remove.dataset.removeMatch = match.id;
+  remove.textContent = "Remove";
+  detail.appendChild(remove);
+  return detail;
+}
+
 function endGame() {
   if (!state.board) return;
-  if (hasBoardInfo() && !window.confirm("End this game and clear the revealed information?")) return;
+  if (hasBoardInfo()) {
+    const message = matchWorthRecording()
+      ? "End this game? This round is saved to match history and the board is cleared."
+      : "End this game and clear the revealed information?";
+    if (!window.confirm(message)) return;
+  }
+  recordMatch();
   state.board.items = [];
   state.board.treasureTotal = null;
   state.board.maxCounts = emptyMaxCounts();
@@ -3137,175 +3333,227 @@ function renderEstimate() {
   $("#bid-cap").textContent = formatCoins(bids.cap);
 }
 
-const HOUSE_ITEM_COUNTS = {
-  eruditio: { low: 10, high: 24 },
-  dawnlight: { low: 18, high: 26 }
-};
-
 function recommendationBids(board, data) {
+  if (!boardHasBidInput(board)) return { profit: 0, risk: 0, cap: 0 };
   const band = houseItemBand(board);
-  if (band) {
-    return {
-      profit: bidFromWorth(recommendationWorth(board, data, band.low)),
-      risk: bidFromWorth(recommendationWorth(board, data, band.mid)),
-      cap: bidFromWorth(recommendationWorth(board, data, band.high))
-    };
-  }
-  const bid = bidFromWorth(recommendationWorth(board, data));
-  return { profit: bid, risk: Math.round(bid * 1.3), cap: Math.round(bid * 1.5) };
+  const total = band ? band.low : undefined;
+  const bid = (mode) => bidFromWorth(recommendationWorth(board, data, total, mode));
+  return { profit: bid("safe"), risk: bid("risk"), cap: bid("cap") };
+}
+
+function boardHasBidInput(board) {
+  if (!board) return false;
+  if ((board.items || []).length > 0) return true;
+  if (Number.isInteger(board.treasureTotal) && board.treasureTotal > 0) return true;
+  const maxes = board.maxCounts;
+  if (!maxes) return false;
+  return ["rarities", "types", "sizes"].some((kind) =>
+    Object.keys(maxes[kind] || {}).some((id) => Number.isInteger(maxes[kind][id]))
+  );
 }
 
 function houseItemBand(board) {
-  const band = board && HOUSE_ITEM_COUNTS[board.house];
-  if (!band) return null;
+  const samples = houseItemTotals(board && board.house);
+  if (!samples.length || !board) return null;
   const total = board.treasureTotal;
   if (Number.isInteger(total) && total > 0) return null;
   const logged = (board.items || []).length;
-  const high = Math.max(band.high, logged);
-  const low = Math.min(band.low, high);
+  const high = Math.max(Math.max(...samples), logged);
+  const low = Math.min(Math.min(...samples), high);
   return { low, mid: Math.round((low + high) / 2), high };
+}
+
+function houseItemTotals(houseId) {
+  const house = state.data && state.data.houses.find((entry) => entry.id === houseId);
+  const totals = house && house.itemTotals;
+  if (!Array.isArray(totals)) return [];
+  return totals.filter((value) => Number.isInteger(value) && value > 0);
 }
 
 function bidFromWorth(worth) {
   return worth > 0 ? Math.round(worth * 0.8) : 0;
 }
 
-function recommendationWorth(board, data, total) {
-  if (!board) return 0;
+function recommendationWorth(board, data, total, mode) {
+  if (!board || !data) return 0;
+  const level = mode || "safe";
   const sized = Number.isInteger(total) ? Object.assign({}, board, { treasureTotal: total }) : board;
-  const mins = rarityMinimums(data, sized);
-  const counts = tally(board.items || [], data);
-  let priced = 0;
-  let specific = 0;
-  const rarityCounts = {};
-  let colorless = 0;
+  const rooms = openRooms(sized, data);
+  const catalog = (data.treasures || []).map((item, index) => ({ ...item, index, price: Number(item.price) }))
+    .filter((item) => Number.isFinite(item.price))
+    .sort((left, right) => left.price - right.price || left.index - right.index);
+  const used = new Set();
+  let worth = 0;
   (board.items || []).forEach((item) => {
     if (item.price != null && Number.isFinite(Number(item.price))) {
-      priced += Number(item.price);
+      worth += Number(item.price);
+      const claimed = claimPricedTreasure(catalog, item);
+      if (claimed && !used.has(claimed.index)) {
+        used.add(claimed.index);
+        spend(claimed, recommendationSlot(item), rooms);
+      }
       return;
     }
-    if (hasTypeOrSize(item) && item.rarity && item.rarity !== "unknown") {
-      specific += lowestPossibleWorth(board, data, item, counts);
-      return;
-    }
-    if (item.rarity && item.rarity !== "unknown" && mins[item.rarity] != null) {
-      rarityCounts[item.rarity] = (rarityCounts[item.rarity] || 0) + 1;
-      return;
-    }
-    colorless += 1;
+    const slot = recommendationSlot(item);
+    worth += lowestPartialPrice(catalog, slot, sized, data, level);
   });
-  const rarityWorth = Object.entries(rarityCounts).reduce((sum, [rarity, count]) => {
-    return sum + mins[rarity] * 3 * count;
-  }, 0);
-  const remaining = colorless + unlistedSlots(sized);
-  return priced + specific + rarityWorth + unknownColorWorth(sized, data, mins, remaining);
-}
-
-function hasTypeOrSize(item) {
-  return Boolean(item.type && item.type !== "unknown") || (item.size != null && item.size !== "");
-}
-
-function lowestPossibleWorth(board, data, item, counts) {
-  let lowest = null;
-  ((data && data.treasures) || []).forEach((treasure) => {
-    const price = Number(treasure.price);
-    if (!Number.isFinite(price) || !treasurePossible(board, item, treasure, counts)) return;
-    if (lowest == null || price < lowest) lowest = price;
-  });
-  return lowest == null ? 0 : lowest;
-}
-
-function treasurePossible(board, item, treasure, counts) {
-  const rarity = item.rarity && item.rarity !== "unknown" ? item.rarity : "";
-  const type = item.type && item.type !== "unknown" ? item.type : "";
-  const size = item.size == null || item.size === "" ? "" : sizeKey(item.size);
-  if (rarity) {
-    if (treasure.rarity !== rarity) return false;
-  } else if (categoryClosed(board, counts, "rarities", treasure.rarity)) return false;
-  if (type) {
-    if (!typeMatches(treasure.type, type)) return false;
-  } else if (categoryClosed(board, counts, "types", treasure.type)) return false;
-  const shape = treasureShape(treasure) || (treasure.size == null ? "" : sizeKey(treasure.size));
-  if (size) {
-    if (!treasureMatchesSize(treasure, size)) return false;
-  } else if (shape && categoryClosed(board, counts, "sizes", shape)) return false;
-  return true;
-}
-
-function categoryClosed(board, counts, kind, id) {
-  if (!id || !board) return false;
-  const key = kind === "sizes" ? sizeKey(id) : String(id);
-  const max = board.maxCounts?.[kind]?.[key];
-  if (!Number.isInteger(max)) return false;
-  return (counts[kind]?.[key] || 0) >= max;
-}
-
-function unknownColorWorth(board, data, mins, remaining) {
-  if (remaining <= 0) return 0;
-  const counts = tally(board.items || [], data);
-  const capped = [];
-  const open = [];
-  ((data && data.rarities) || []).forEach((entry) => {
-    const id = entry.id;
-    if (!id || id === "unknown" || mins[id] == null) return;
-    const max = board.maxCounts?.rarities?.[id];
-    if (!Number.isInteger(max)) {
-      open.push({ id, min: mins[id] });
-      return;
-    }
-    const room = max - (counts.rarities?.[id] || 0);
-    if (room > 0) capped.push({ min: mins[id], room });
-  });
-  capped.sort((left, right) => left.min - right.min);
-  let left = remaining;
-  let worth = 0;
-  capped.forEach((entry) => {
-    if (left <= 0) return;
-    const take = Math.min(entry.room, left);
-    worth += entry.min * 3 * take;
-    left -= take;
-  });
-  if (left > 0 && open.length) {
-    worth += weightedColorMinimum(data, open) * 3 * left;
+  const goldRedLeft = goldRedRoom(sized, data);
+  const extra = unlistedSlots(sized);
+  const quota = colorQuotaSlots(data, catalog, used, rooms, goldRedLeft, extra);
+  const filled = level === "safe"
+    ? assignRecommendationSlots(quota, catalog, used, rooms, goldRedLeft)
+    : { worth: quotaLevelPrice(catalog, used, rooms, quota, level), goldRedLeft };
+  worth += filled.worth;
+  const remaining = extra - quota.length;
+  if (remaining > 0) {
+    const shared = weightedOpenColorPrice(data, catalog, used, rooms, filled.goldRedLeft, level);
+    worth += shared * remaining * (level === "safe" ? 3 : 1);
   }
   return worth;
 }
 
-function weightedColorMinimum(data, open) {
-  const order = ((data && data.rarities) || []).map((entry) => entry.id).filter((id) => id && id !== "unknown");
+function weightedOpenColorPrice(data, catalog, used, rooms, goldRedLeft, mode) {
+  const ids = ((data && data.rarities) || []).map((entry) => entry.id).filter((id) => id && id !== "unknown");
   let total = 0;
   let weight = 0;
-  open.forEach((entry) => {
-    const index = order.indexOf(entry.id);
-    const scale = index < 0 ? 1 : 2 ** (order.length - 1 - index);
-    total += entry.min;
-    weight += scale;
+  ids.forEach((id, index) => {
+    if (rooms && rooms.rarities && rooms.rarities[id] !== Infinity) return;
+    if (goldRedLeft != null && goldRedLeft <= 0 && (id === "gold" || id === "red")) return;
+    const prices = catalog.filter((item) => !used.has(item.index) && recommendationFits(item, { rarity: id, type: null, size: null }, rooms, null)).map((item) => item.price);
+    if (!prices.length) return;
+    total += levelPrice(prices, mode);
+    weight += 2 ** (ids.length - 1 - index);
   });
   return weight ? total / weight : 0;
 }
 
-function rarityMinimums(data, board) {
-  const mins = {};
-  const counts = board ? tally(board.items || [], data) : null;
-  ((data && data.treasures) || []).forEach((treasure) => {
-    const price = Number(treasure.price);
-    if (!treasure.rarity || treasure.rarity === "unknown" || !Number.isFinite(price)) return;
-    if (counts && treasureExcluded(board, counts, treasure)) return;
-    if (mins[treasure.rarity] == null || price < mins[treasure.rarity]) mins[treasure.rarity] = price;
+function levelPrice(prices, mode) {
+  const average = prices.reduce((sum, price) => sum + price, 0) / prices.length;
+  if (mode === "cap") return average;
+  if (mode === "risk") return average * 0.5;
+  return Math.min(...prices);
+}
+
+function quotaLevelPrice(catalog, used, rooms, slots, mode) {
+  const counts = {};
+  slots.forEach((slot) => { counts[slot.rarity] = (counts[slot.rarity] || 0) + 1; });
+  return Object.keys(counts).reduce((sum, color) => {
+    const prices = catalog.filter((item) => !used.has(item.index) && recommendationFits(item, { rarity: color, type: null, size: null }, rooms, null)).map((item) => item.price);
+    if (!prices.length) return sum;
+    return sum + counts[color] * levelPrice(prices, mode);
+  }, 0);
+}
+
+function lowestPartialPrice(catalog, slot, board, data, mode) {
+  const prices = [];
+  catalog.forEach((treasure) => {
+    if (!matchesFacts(treasure, slot) || !partialTreasureAllowed(treasure, slot, board, data)) return;
+    prices.push(treasure.price);
   });
-  return mins;
+  if (!prices.length) return 0;
+  const lowest = Math.min(...prices);
+  const average = prices.reduce((sum, price) => sum + price, 0) / prices.length;
+  if (mode === "cap") return average;
+  if (mode === "risk") return average * 0.5;
+  return Math.min(lowest * 3, average * 0.5);
 }
 
-function treasureExcluded(board, counts, treasure) {
-  if (typeClosed(board, counts, treasure.type)) return true;
-  const shape = treasureShape(treasure) || (treasure.size == null ? "" : sizeKey(treasure.size));
-  return Boolean(shape && categoryClosed(board, counts, "sizes", shape));
+function partialTreasureAllowed(treasure, slot, board, data) {
+  const counts = tally(board.items || [], data);
+  if (!slot.rarity && blockedByOnlyMax(board, counts, "rarities", treasure.rarity)) return false;
+  if (!slot.type && blockedByOnlyMax(board, counts, "types", treasure.type)) return false;
+  if (slot.size == null) {
+    const shape = treasureShape(treasure) || (treasure.size == null ? "" : sizeKey(treasure.size));
+    if (shape && blockedByOnlyMax(board, counts, "sizes", shape)) return false;
+  }
+  return true;
 }
 
-function typeClosed(board, counts, type) {
-  if (!type) return false;
-  if (categoryClosed(board, counts, "types", type)) return true;
-  return (type === "figurine" || type === "collection") && categoryClosed(board, counts, "types", "collection");
+function blockedByOnlyMax(board, counts, kind, id) {
+  if (!id || !board || !board.maxCounts) return false;
+  const key = kind === "sizes" ? sizeKey(id) : kind === "types" && (id === "figurine" || id === "collection") ? "collection" : String(id);
+  const max = board.maxCounts[kind]?.[key];
+  if (!Number.isInteger(max)) return false;
+  const known = counts[kind]?.[key] || 0;
+  return known === 0 && max <= 0;
+}
+
+function colorQuotaSlots(data, catalog, used, rooms, goldRedLeft, extra) {
+  if (!extra || !rooms || !rooms.rarities) return [];
+  const ids = ((data && data.rarities) || []).map((entry) => entry.id).filter((id) => id && id !== "unknown");
+  const quotas = [];
+  ids.forEach((id) => {
+    const room = rooms.rarities[id];
+    if (!Number.isFinite(room) || room <= 0) return;
+    const cheapest = catalog.find((item) => !used.has(item.index) && recommendationFits(item, { rarity: id, type: null, size: null }, rooms, null));
+    if (!cheapest) return;
+    quotas.push({ rarity: id, count: room, price: cheapest.price, order: ids.indexOf(id) });
+  });
+  quotas.sort((left, right) => left.price - right.price || left.order - right.order);
+  if (goldRedLeft != null) {
+    let remain = Math.max(0, goldRedLeft);
+    quotas.forEach((quota) => {
+      if (quota.rarity !== "gold" && quota.rarity !== "red") return;
+      const take = Math.min(quota.count, remain);
+      quota.count = take;
+      remain -= take;
+    });
+  }
+  const slots = [];
+  let left = extra;
+  quotas.forEach((quota) => {
+    const take = Math.min(quota.count, left);
+    for (let index = 0; index < take; index += 1) {
+      slots.push({ rarity: quota.rarity, type: null, size: null, rank: 1 });
+    }
+    left -= take;
+  });
+  return slots;
+}
+
+function assignRecommendationSlots(slots, catalog, used, rooms, goldRedLeft) {
+  let worth = 0;
+  let left = goldRedLeft;
+  slots.forEach((slot) => {
+    const taken = catalog.find((item) => !used.has(item.index) && recommendationFits(item, slot, rooms, left));
+    if (!taken) return;
+    used.add(taken.index);
+    if (left != null && !slot.rarity && (taken.rarity === "gold" || taken.rarity === "red") && left > 0) left -= 1;
+    spend(taken, slot, rooms);
+    worth += taken.price;
+  });
+  return { worth, goldRedLeft: left };
+}
+
+function recommendationSlot(item) {
+  return {
+    rarity: item.rarity && item.rarity !== "unknown" ? item.rarity : null,
+    type: item.type && item.type !== "unknown" ? item.type : null,
+    size: item.size == null || item.size === "" ? null : item.size
+  };
+}
+
+function claimPricedTreasure(catalog, item) {
+  if (item.catalogName) {
+    const named = catalog.find((treasure) => treasure.name === item.catalogName);
+    if (named) return named;
+  }
+  const slot = recommendationSlot(item);
+  const matches = catalog.filter((treasure) => Number(treasure.price) === Number(item.price) && matchesFacts(treasure, slot));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function goldRedRoom(board, data) {
+  const allowance = goldRedAllowance(board);
+  if (allowance == null) return null;
+  const counts = tally(board.items || [], data);
+  return allowance - ((counts.rarities.gold || 0) + (counts.rarities.red || 0));
+}
+
+function recommendationFits(item, slot, rooms, goldRedLeft) {
+  if (!fits(item, slot, rooms)) return false;
+  if (goldRedLeft != null && !slot.rarity && (item.rarity === "gold" || item.rarity === "red") && goldRedLeft <= 0) return false;
+  return true;
 }
 
 function unlistedSlots(board) {
@@ -3889,5 +4137,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=224").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=238").catch(() => {});
 }

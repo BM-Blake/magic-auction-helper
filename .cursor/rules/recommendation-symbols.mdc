@@ -1,0 +1,20 @@
+---
+description: Symbols for the recommendation formula. Use these names and add new ones only when the user defines them.
+alwaysApply: true
+---
+
+# Recommendation symbols
+
+Use these symbols when discussing the recommendation formula. Add a symbol only when the user defines it.
+
+- `c` = color
+- `t` = type
+- `s` = size
+- `m` = known max. Example: `mc` = max color
+- `k` = known. Example: `kc/mc`
+- `M` = maxed. Example: `Mc` = (`kc` = `mc`)
+- `p` = possible
+- `$` = price
+- `u` = unknown
+- `min(p$)` = the lowest possible price
+- `50%(avg(p))` = half the average of every treasure that can still fill that slot

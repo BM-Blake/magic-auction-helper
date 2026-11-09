@@ -39,9 +39,9 @@
         "keywords": "magic auction, magic auction database, magic auction mcgg, magic auction mcgg helper, magic auction mcgg tracker, magic auction mcgg database, magic auction helper, magic auction tracker, magic auction go go, magic chess go go, mcgg magic auction, magic auction treasure database"
       }
     </script>
-    <link rel="icon" href="icon.png?v=224" type="image/png">
+    <link rel="icon" href="icon.png?v=238" type="image/png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=224">
+    <link rel="stylesheet" href="styles.css?v=238">
   </head>
   <body>
     <div class="app">
@@ -81,6 +81,7 @@
         </div>
         <button type="button" id="game-start" class="menu-btn">Game Start</button>
         <button type="button" id="open-database" class="menu-btn menu-btn-secondary">Database</button>
+        <button type="button" id="open-history" class="menu-btn menu-btn-secondary">Match history</button>
         <div class="support">
           <p class="support-prompt">Like our app?</p>
           <div class="support-actions">
@@ -139,6 +140,16 @@
         <p id="database-empty" class="hint" hidden>No treasures match.</p>
       </section>
 
+      <section id="scene-history" class="scene scene-history" hidden>
+        <div class="title-row">
+          <h1 class="house-name">Match history</h1>
+          <button type="button" id="close-history" class="ghost">Back</button>
+        </div>
+        <p class="hint">End game saves the round here, including the recommendation prices.</p>
+        <p id="match-empty" class="empty" hidden>No matches yet.</p>
+        <ul id="match-list" class="match-list"></ul>
+      </section>
+
       <section id="scene-tracker" class="scene scene-tracker" hidden>
       <div id="game-bar">
         <div class="title-row">
@@ -154,7 +165,7 @@
           <div class="bid-levels">
             <p class="worth-label">Recommendations</p>
             <div class="worth-figure">
-              <p class="worth-label">Highest profit</p>
+              <p class="worth-label">Safe bet</p>
               <p id="recommended-bid" class="worth-range">0</p>
             </div>
             <div class="worth-figure">
@@ -187,7 +198,7 @@
           </div>
 
           <div class="exact">
-            <p class="worth-label">Exact price</p>
+            <p class="worth-label">Known total</p>
             <p id="exact-total" class="exact-total">0</p>
           </div>
 
@@ -248,7 +259,7 @@
             <span class="manual-arrow" aria-hidden="true"></span>
           </button>
           <div id="manual-start" class="manual-panel" hidden>
-            <p>Choose a hero and an auction house, then tap Game Start. End game clears this round’s treasures and keeps your hero and house.</p>
+            <p>Choose a hero and an auction house, then tap Game Start. End game saves the round to Match history when it has treasures or a total, then clears the treasures and keeps your hero and house.</p>
           </div>
         </div>
         <div class="manual-item">
@@ -292,7 +303,16 @@
             <span class="manual-arrow" aria-hidden="true"></span>
           </button>
           <div id="manual-worth" class="manual-panel" hidden>
-            <p>Estimate worth is a range from the treasure catalog. Highest profit is 80% of the estimated worth. Calculated risk is 1.3 times that bid, and Never more than is 1.5 times that bid. In Eruditio, before the treasure total is known, those three prices are 80% of the worth at 10, 17, and 24 treasures. Dawnlight uses 18, 22, and 26.</p>
+            <p>Estimate worth is a range from the treasure catalog. Safe bet is 80% of the cheapest possible worth. A known color, type, or size uses the lower of 3 times the lowest possible price of what is known and half the average price of every treasure that can still fill that slot. Listed treasures that already fill a maximum do not raise that price. A maximum with nothing listed still leaves that color, type, or size out. Missing treasures fill a color that has a maximum first, cheapest color first. Anything left with no color maximum costs 3 times the sum of the cheapest possible price of each open color, divided by the weights gray 32, green 16, blue 8, purple 4, gold 2, and red 1. A color, type, or size that cannot appear is left out. Calculated risk uses half the average price wherever safe bet uses the lowest possible price, and it drops the tripling. Never more than uses the average price. They stay at 0 until this game has a treasure, a total, or a maximum. For a house with logged match totals, before this game's treasure total is known, all three prices use the lowest logged count.</p>
+          </div>
+        </div>
+        <div class="manual-item">
+          <button type="button" class="manual-toggle" aria-expanded="false" aria-controls="manual-history">
+            <span>Match history</span>
+            <span class="manual-arrow" aria-hidden="true"></span>
+          </button>
+          <div id="manual-history" class="manual-panel" hidden>
+            <p>Match history keeps each finished round on this device, including the recommendation prices. Remove drops one round from the history.</p>
           </div>
         </div>
         <div class="manual-item">
@@ -344,6 +364,6 @@
         </li>
       </ul>
     </dialog>
-    <script src="app.js?v=224"></script>
+    <script src="app.js?v=238"></script>
   </body>
 </html>

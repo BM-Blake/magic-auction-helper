@@ -4,7 +4,7 @@ Fan-made guide for Magic Auction Helper. The same sections are in the app: on th
 
 ## Start a game
 
-Choose a hero and an auction house, then tap Game Start. End game clears this round’s treasures and keeps your hero and house.
+Choose a hero and an auction house, then tap Game Start. End game saves the round to Match history when it has treasures or a total, then clears the treasures and keeps your hero and house.
 
 ## Adding treasures
 
@@ -22,7 +22,11 @@ A chip appears when that rarity, type, or size has a count. Tap it to open those
 
 ## Worth and bids
 
-Estimate worth is a range from the treasure catalog. Highest profit is 80% of the estimated worth. Calculated risk is 1.3 times that bid, and Never more than is 1.5 times that bid. In Eruditio, before the treasure total is known, those three prices are 80% of the worth at 10, 17, and 24 treasures. Dawnlight uses 18, 22, and 26.
+Estimate worth is a range from the treasure catalog. Safe bet is 80% of the cheapest possible worth. A known color, type, or size uses the lower of 3 times the lowest possible price of what is known and half the average price of every treasure that can still fill that slot. Listed treasures that already fill a maximum do not raise that price. A maximum with nothing listed still leaves that color, type, or size out. Missing treasures fill a color that has a maximum first, cheapest color first. Anything left with no color maximum costs 3 times the sum of the cheapest possible price of each open color, divided by the weights gray 32, green 16, blue 8, purple 4, gold 2, and red 1. A color, type, or size that cannot appear is left out. Calculated risk uses half the average price wherever safe bet uses the lowest possible price, and it drops the tripling. Never more than uses the average price. They stay at 0 until this game has a treasure, a total, or a maximum. For a house with logged match totals, before this game's treasure total is known, all three prices use the lowest logged count.
+
+## Match history
+
+Match history keeps each finished round on this device, including the recommendation prices. Remove drops one round from the history.
 
 ## Database
 

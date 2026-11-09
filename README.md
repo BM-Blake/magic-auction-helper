@@ -11,7 +11,8 @@ Live page: https://bm-blake.github.io/magic-auction-helper/
 - Exact prices the game has shown
 - A treasure total and maximum counts
 - An estimate of worth from the treasure catalog
-- Three bids under Recommendations: highest profit at 80% of the estimated worth, calculated risk at 1.3 times that bid, and never more than at 1.5 times that bid. Eruditio uses 10, 17, and 24 treasures for those prices until the total is known. Dawnlight uses 18, 22, and 26
+- Three bids under Recommendations: safe bet at 80% of the cheapest possible worth, calculated risk uses half the average price wherever safe bet uses the lowest possible price, and it drops the tripling. Never more than uses the average price. A known color, type, or size uses the lower of 3 times the lowest possible price of what is known and half the average price of every treasure that can still fill that slot. Listed treasures that already fill a maximum do not raise that price. A maximum with nothing listed still leaves that color, type, or size out. Missing treasures fill a color that has a maximum first, cheapest color first. Anything left with no color maximum costs 3 times the sum of the cheapest possible price of each open color, divided by the weights gray 32, green 16, blue 8, purple 4, gold 2, and red 1. A color, type, or size that cannot appear is left out. The three prices stay at 0 until this game has a treasure, a total, or a maximum. Houses with logged match totals use the lowest logged count for all three prices until the treasure total is known
+- Match history saves each finished round on the device, including the recommendation prices
 
 The Magic Auction database lists the catalog treasures and filters them by name, rarity, type, and size.
 

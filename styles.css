@@ -260,6 +260,64 @@ button { cursor: pointer; }
   border: 1px solid var(--line);
 }
 
+.menu-btn:disabled {
+  opacity: 0.35;
+}
+
+.match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.match-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--raise);
+}
+
+.match-open {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.match-title { font-weight: 650; }
+
+.match-open .detail-arrow { margin-left: auto; }
+
+.match-card.is-open .detail-arrow {
+  margin-top: -3px;
+  transform: rotate(45deg);
+}
+
+.match-meta {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.match-detail { padding: 0 12px 12px; }
+
+.match-detail p { margin: 0 0 8px; }
+
+.match-items {
+  margin: 0 0 10px;
+  padding-left: 18px;
+}
+
+.scene-history .hint { margin-top: 8px; }
+
 .support {
   position: fixed;
   z-index: 1;
@@ -1655,7 +1713,8 @@ select:focus-visible {
   }
 
   .app:has(#scene-tracker:not([hidden])),
-  .app:has(#scene-database:not([hidden])) {
+  .app:has(#scene-database:not([hidden])),
+  .app:has(#scene-history:not([hidden])) {
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -1665,7 +1724,7 @@ select:focus-visible {
   .scene-menu {
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(168px, 0.7fr);
-    grid-template-rows: auto auto;
+    grid-template-rows: auto auto auto;
     align-content: center;
     gap: 10px 14px;
     min-height: calc(100vh - 16px - var(--safe-top) - var(--safe-bottom));
@@ -1674,18 +1733,20 @@ select:focus-visible {
 
   .menu-picks {
     grid-column: 1;
-    grid-row: 1 / span 2;
+    grid-row: 1 / span 3;
     align-self: center;
   }
 
   #game-start,
-  #open-database {
+  #open-database,
+  #open-history {
     grid-column: 2;
-    min-height: 48px;
+    min-height: 44px;
   }
 
   #game-start { grid-row: 1; align-self: end; }
-  #open-database { grid-row: 2; align-self: start; }
+  #open-database { grid-row: 2; align-self: center; }
+  #open-history { grid-row: 3; align-self: start; }
 
   .app-title { font-size: 1.15rem; }
 
@@ -1709,10 +1770,13 @@ select:focus-visible {
   }
 
   .scene-tracker,
-  .scene-database {
+  .scene-database,
+  .scene-history {
     flex: 1;
     min-height: 0;
   }
+
+  .scene-history { overflow: auto; }
 
   .scene-tracker {
     display: grid;
