@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=239"),
-      fetch("data/treasures.json?v=239")
+      fetch("data/auction.json?v=241"),
+      fetch("data/treasures.json?v=241")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -552,22 +552,25 @@ function buildGroupElement(group, index) {
   entry.appendChild(priceField(group, index));
   entry.appendChild(categoryRow(group));
 
-  entry.appendChild(choiceField("Rarity", "rarity", "add-rarities", group, state.data.rarities.map((rarity) => ({
+  const rarityOptions = state.data.rarities.map((rarity) => ({
     id: rarity.id,
     label: rarity.name,
     color: rarity.color,
     ink: rarity.ink
-  })), "Rarity"));
-  entry.appendChild(choiceField("Type", "type", "", group, state.data.types.map((type) => ({
-    id: type.id,
-    label: type.name
-  })), "Type"));
-  entry.appendChild(choiceField("Size", "size", "add-sizes", group, orderedSizePresets().map((size) => ({
-    id: size,
-    label: size
-  })), "Size"));
-  const specify = specifyBlock(group);
-  if (specify) entry.appendChild(specify);
+  }));
+  const typeOptions = state.data.types.map((type) => ({ id: type.id, label: type.name }));
+  const sizeOptions = orderedSizePresets().map((size) => ({ id: size, label: size }));
+  if (group.use === "max" || group.use === "both") {
+    entry.appendChild(choiceField("Rarity", "rarity", "add-rarities", group, rarityOptions, "Rarity"));
+    entry.appendChild(choiceField("Type", "type", "", group, typeOptions, "Type"));
+    entry.appendChild(choiceField("Size", "size", "add-sizes", group, sizeOptions, "Size"));
+    const specify = specifyBlock(group);
+    if (specify) entry.appendChild(specify);
+  } else {
+    entry.appendChild(choiceStepperField("Rarity", "rarity", "add-rarities", group, rarityOptions, "Rarity"));
+    entry.appendChild(choiceStepperField("Type", "type", "", group, typeOptions, "Type"));
+    entry.appendChild(choiceStepperField("Size", "size", "add-sizes", group, sizeOptions, "Size"));
+  }
   return entry;
 }
 
@@ -882,6 +885,7 @@ function specifyFits(group, detail, kind, id) {
 }
 
 function canAddSpecify(group, kind, id) {
+  if (kind === "size" && (group.type === "collection" || detailsAllCollection(group))) return false;
   const count = parseCount(group.count);
   if (count == null) return true;
   if (unknownInGroup(group, kind) === 0) return false;
@@ -971,22 +975,67 @@ function categoryRow(group) {
 
 function paintCategoryButton(button, group) {
   const kind = button.dataset.openCat;
-  const picked = categoryValue(group, kind);
   const value = button.querySelector(".cat-value");
-  value.textContent = picked.label;
-  button.classList.toggle("is-rarity", Boolean(picked.color));
-  if (picked.color) {
-    button.style.setProperty("--chip", picked.color);
-    button.style.setProperty("--chip-ink", picked.ink);
-  } else {
+  const locked = kind === "size" && (group.type === "collection" || detailsAllCollection(group));
+  if (group.use === "known") {
+    const total = parseCount(group.count);
+    const assigned = specifyKindAssigned(group, kind);
+    value.textContent = total == null ? (assigned ? String(assigned) : "") : `${assigned}/${total}`;
+    button.classList.remove("is-rarity");
     button.style.removeProperty("--chip");
     button.style.removeProperty("--chip-ink");
+  } else {
+    const picked = categoryValue(group, kind);
+    value.textContent = picked.label;
+    button.classList.toggle("is-rarity", Boolean(picked.color));
+    if (picked.color) {
+      button.style.setProperty("--chip", picked.color);
+      button.style.setProperty("--chip-ink", picked.ink);
+    } else {
+      button.style.removeProperty("--chip");
+      button.style.removeProperty("--chip-ink");
+    }
   }
-  const locked = kind === "size" && group.type === "collection";
   button.disabled = locked;
   const open = group.open === kind && !locked;
   button.setAttribute("aria-pressed", open ? "true" : "false");
   button.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function detailsAllCollection(group) {
+  const details = group.details || [];
+  return details.length > 0 && details.every((detail) => detail.type === "collection");
+}
+
+function specifyKindAssigned(group, kind) {
+  return (group.details || []).filter((detail) => detail[kind]).length;
+}
+
+function choiceStepperField(legendText, kind, extraClass, group, options, ariaLabel) {
+  const fieldset = document.createElement("fieldset");
+  fieldset.className = "cat-panel";
+  fieldset.dataset.catPanel = kind;
+  const locked = kind === "size" && detailsAllCollection(group);
+  fieldset.hidden = locked || group.open !== kind;
+  const legend = document.createElement("legend");
+  legend.textContent = legendText;
+  const chips = document.createElement("div");
+  chips.className = extraClass ? `chips ${extraClass}` : "chips";
+  chips.setAttribute("role", "group");
+  chips.setAttribute("aria-label", ariaLabel);
+  options.forEach((option) => {
+    const count = specifyAssigned(group, kind, option.id);
+    const wrap = document.createElement("div");
+    wrap.className = "chip-wrap";
+    wrap.append(
+      specifyStepButton(kind, option, "-1", count === 0),
+      specifyCountChip(kind, option, count),
+      specifyStepButton(kind, option, "1", !canAddSpecify(group, kind, option.id))
+    );
+    chips.appendChild(wrap);
+  });
+  fieldset.append(legend, chips);
+  return fieldset;
 }
 
 function categoryValue(group, kind) {
@@ -1255,7 +1304,7 @@ function onSheetClick(event) {
     const group = state.groups[Number(entry.dataset.group)];
     if (!group) return;
     const kind = category.dataset.openCat;
-    if (kind === "size" && group.type === "collection") return;
+    if (kind === "size" && (group.type === "collection" || detailsAllCollection(group))) return;
     const next = group.open === kind ? "" : kind;
     (group.details || []).forEach((detail) => { detail.open = ""; });
     pruneEmptyDetails(group);
@@ -1309,9 +1358,35 @@ function onSheetInput(event) {
   }
   if (event.target.classList.contains("group-use")) {
     group.use = event.target.value;
-    entry.classList.toggle("is-max", group.use === "max");
+    if (group.use === "known") {
+      expandSharedFactsToDetails(group);
+      group.rarity = "";
+      group.type = "";
+      group.size = "";
+    }
+    const index = entry.dataset.group;
+    const sheet = $("#sheet");
+    const top = sheet ? sheet.scrollTop : 0;
+    renderGroups();
+    if (sheet) sheet.scrollTop = top;
+    const again = document.querySelector(`#groups .entry[data-group="${index}"] .group-use`);
+    if (again) again.focus();
   }
   hideError();
+}
+
+function expandSharedFactsToDetails(group) {
+  const count = parseCount(group.count);
+  if (count == null || count < 1) return;
+  if (!group.details) group.details = [];
+  while (group.details.length < count) group.details.push(emptyDetail());
+  for (let index = 0; index < count; index += 1) {
+    const detail = group.details[index];
+    if (group.rarity && !detail.rarity) detail.rarity = group.rarity;
+    if (group.type && !detail.type) detail.type = group.type;
+    if (group.size && !detail.size) detail.size = group.size;
+  }
+  pruneEmptyDetails(group);
 }
 
 function syncGroupChips(entry, group) {
@@ -4137,5 +4212,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=239").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=241").catch(() => {});
 }

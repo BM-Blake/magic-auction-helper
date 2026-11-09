@@ -8,7 +8,7 @@ Choose a hero and an auction house, then tap Game Start. End game saves the roun
 
 ## Adding treasures
 
-Tap + to add information. Each count adds that many treasures. Known count records treasures you have seen. Max sets a maximum. Both uses the same number for the count and the maximum. A maximum with no rarity, type, or size sets the treasure total.
+Tap + to add information. Each count adds that many treasures. Known count records treasures you have seen. Open rarity, type, or size and use + and − to split that count across different values, the same way the information card does. Max sets a maximum. Both uses the same number for the count and the maximum. A maximum with no rarity, type, or size sets the treasure total.
 
 ## Heroes
 
