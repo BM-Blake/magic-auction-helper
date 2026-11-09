@@ -1,6 +1,6 @@
 # Magic Auction Helper
 
-Fan-made Magic Auction database, tracker, and MCGG helper for Magic Chess: Go Go, season 7.1. It is a static page, so there is no build step, and it keeps working after the first load.
+Fan-made Magic Auction database, tracker, and MCGG helper for Magic Chess: Go Go, season 7.1. It recommends a safe bet, a calculated risk, and a never more than price, and it keeps match history on the device. It is a static page, so there is no build step, and it keeps working after the first load.
 
 Live page: https://bm-blake.github.io/magic-auction-helper/
 
@@ -28,7 +28,7 @@ Open the page once while online. A service worker then saves the page and its da
 
 ## Data
 
-House ranges and the rarity, type, and size lists live in `data/auction.json`. Catalog names, prices, and shapes live in `data/treasures.json`, recorded from the live Treasure Collection.
+House price bands, logged treasure totals, and the rarity, type, and size lists live in `data/auction.json`. Catalog names, prices, and shapes live in `data/treasures.json`, recorded from the live Treasure Collection.
 
 The estimate uses each catalog treasure at most once. A house range is the usual price band, and a revealed treasure can be worth more or less than that band.
 

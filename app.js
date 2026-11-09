@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=238"),
-      fetch("data/treasures.json?v=238")
+      fetch("data/auction.json?v=239"),
+      fetch("data/treasures.json?v=239")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -4137,5 +4137,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=238").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=239").catch(() => {});
 }
