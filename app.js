@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=241"),
-      fetch("data/treasures.json?v=241")
+      fetch("data/auction.json?v=253"),
+      fetch("data/treasures.json?v=253")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -567,9 +567,13 @@ function buildGroupElement(group, index) {
     const specify = specifyBlock(group);
     if (specify) entry.appendChild(specify);
   } else {
-    entry.appendChild(choiceStepperField("Rarity", "rarity", "add-rarities", group, rarityOptions, "Rarity"));
-    entry.appendChild(choiceStepperField("Type", "type", "", group, typeOptions, "Type"));
-    entry.appendChild(choiceStepperField("Size", "size", "add-sizes", group, sizeOptions, "Size"));
+    [
+      ["rarity", "Rarity", "add-rarities", rarityOptions],
+      ["type", "Type", "", typeOptions],
+      ["size", "Size", "add-sizes", sizeOptions]
+    ].forEach(([kind, legend, extra, options]) => {
+      entry.appendChild(choiceStepperField(legend, kind, extra, group, options, legend));
+    });
   }
   return entry;
 }
@@ -826,12 +830,15 @@ function detailChoiceField(legendText, kind, extraClass, group, detail, options,
   chips.setAttribute("aria-label", ariaLabel);
   options.forEach((option) => {
     const count = specifyAssigned(group, kind, option.id);
+    if (count === 0 && specifyAtMax(group, kind, option.id)) return;
     const wrap = document.createElement("div");
     wrap.className = "chip-wrap";
     wrap.append(
-      specifyStepButton(kind, option, "-1", count === 0),
       specifyCountChip(kind, option, count),
-      specifyStepButton(kind, option, "1", !canAddSpecify(group, kind, option.id))
+      spinColumn(
+        specifyStepButton(kind, option, "1", !canAddSpecify(group, kind, option.id)),
+        specifyStepButton(kind, option, "-1", count === 0)
+      )
     );
     chips.appendChild(wrap);
   });
@@ -843,15 +850,53 @@ function specifyAssigned(group, kind, id) {
   return (group.details || []).filter((detail) => detail[kind] === id).length;
 }
 
-function specifyStepButton(kind, option, delta, disabled) {
+function otherKinds(kind) {
+  return ["rarity", "type", "size"].filter((item) => item !== kind);
+}
+
+function detailInScope(detail, kind, scope) {
+  if (!scope) return true;
+  if (scope === "plain") return otherKinds(kind).every((other) => !detail[other]);
+  return detail[scope.kind] === scope.id;
+}
+
+function specifyScopedCount(group, kind, id, scope) {
+  return (group.details || []).filter((detail) => detail[kind] === id && detailInScope(detail, kind, scope)).length;
+}
+
+function plainRoom(group, kind) {
+  const count = parseCount(group.count);
+  if (count == null) return Infinity;
+  const details = group.details || [];
+  const waiting = details.filter((detail) => detailInScope(detail, kind, "plain") && !detail[kind]).length;
+  return waiting + Math.max(0, count - details.length);
+}
+
+function readScope(value) {
+  if (!value) return null;
+  if (value === "plain") return "plain";
+  const split = value.indexOf(":");
+  if (split < 1) return null;
+  return { kind: value.slice(0, split), id: value.slice(split + 1) };
+}
+
+function spinColumn(up, down) {
+  const spin = document.createElement("span");
+  spin.className = "spin";
+  spin.append(up, down);
+  return spin;
+}
+
+function specifyStepButton(kind, option, delta, disabled, scopeKey) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "step-btn chip-adjust";
   button.dataset.specifyStep = delta;
   button.dataset.specifyKind = kind;
   button.dataset.specifyId = option.id;
+  if (scopeKey) button.dataset.specifyScope = scopeKey;
   button.disabled = disabled;
-  button.textContent = delta === "1" ? "+" : "−";
+  button.textContent = delta === "1" ? "▲" : "▼";
   button.setAttribute("aria-label", `${delta === "1" ? "Increase" : "Decrease"} ${option.label}`);
   return button;
 }
@@ -884,9 +929,39 @@ function specifyFits(group, detail, kind, id) {
   return catalogSupports(choiceFacts(detailFacts(group, detail), kind, id));
 }
 
-function canAddSpecify(group, kind, id) {
-  if (kind === "size" && (group.type === "collection" || detailsAllCollection(group))) return false;
+function boardKind(kind) {
+  if (kind === "rarity") return "rarities";
+  if (kind === "type") return "types";
+  return "sizes";
+}
+
+function specifyAtMax(group, kind, id) {
+  const field = boardKind(kind);
+  if (!state.board) return false;
+  if (atCategoryMax(field, id)) return true;
+  const key = field === "sizes" ? sizeKey(id) : String(id);
+  const max = state.board.maxCounts?.[field]?.[key];
+  if (!Number.isInteger(max)) return false;
+  const counts = tally(state.board.items, state.data);
+  return (counts[field]?.[key] || 0) + specifyAssigned(group, kind, id) >= max;
+}
+
+function canAddSpecify(group, kind, id, scope) {
+  if (specifyAtMax(group, kind, id)) return false;
+  if (kind === "size" && scope && scope.kind === "type" && scope.id === "collection") return false;
+  if (kind === "size" && !scope && (group.type === "collection" || detailsAllCollection(group))) return false;
   const count = parseCount(group.count);
+  if (scope && scope !== "plain") {
+    return (group.details || []).some((detail) => detailInScope(detail, kind, scope) && !detail[kind] && specifyFits(group, detail, kind, id));
+  }
+  if (scope === "plain") {
+    if (count == null) return true;
+    if (plainRoom(group, kind) === 0) return false;
+    const details = group.details || [];
+    if (details.some((detail) => detailInScope(detail, kind, "plain") && !detail[kind] && specifyFits(group, detail, kind, id))) return true;
+    if (details.length >= count) return false;
+    return specifyFits(group, emptyDetail(), kind, id);
+  }
   if (count == null) return true;
   if (unknownInGroup(group, kind) === 0) return false;
   const details = group.details || [];
@@ -895,11 +970,36 @@ function canAddSpecify(group, kind, id) {
   return specifyFits(group, emptyDetail(), kind, id);
 }
 
-function addSpecify(group, kind, id) {
+function addSpecify(group, kind, id, scope) {
   if (!group.details) group.details = [];
   const count = parseCount(group.count);
   if (count == null) {
     showError("Enter a whole number of at least 1 for each group.");
+    return;
+  }
+  if (specifyAtMax(group, kind, id)) return;
+  if (scope && scope !== "plain") {
+    const index = group.details.findIndex((detail) => detailInScope(detail, kind, scope) && !detail[kind] && specifyFits(group, detail, kind, id));
+    if (index < 0) return;
+    writeSpecify(group.details[index], kind, id);
+    rerenderGroups();
+    hideError();
+    return;
+  }
+  if (scope === "plain") {
+    if (plainRoom(group, kind) === 0) {
+      showError("Every treasure in this count is already specified.");
+      return;
+    }
+    let index = group.details.findIndex((detail) => detailInScope(detail, kind, "plain") && !detail[kind] && specifyFits(group, detail, kind, id));
+    if (index < 0) {
+      if (group.details.length >= count || !specifyFits(group, emptyDetail(), kind, id)) return;
+      group.details.push(emptyDetail());
+      index = group.details.length - 1;
+    }
+    writeSpecify(group.details[index], kind, id);
+    rerenderGroups();
+    hideError();
     return;
   }
   if (unknownInGroup(group, kind) === 0) {
@@ -912,24 +1012,38 @@ function addSpecify(group, kind, id) {
     group.details.push(emptyDetail());
     index = group.details.length - 1;
   }
-  const detail = group.details[index];
+  writeSpecify(group.details[index], kind, id);
+  rerenderGroups();
+  hideError();
+}
+
+function writeSpecify(detail, kind, id) {
   detail[kind] = id;
   if (kind === "type" && id === "collection") {
     detail.size = collectionShape();
     if (detail.open === "size") detail.open = "";
   }
-  rerenderGroups();
-  hideError();
 }
 
-function removeSpecify(group, kind, id) {
+function removeSpecify(group, kind, id, scope) {
   const details = group.details || [];
+  const match = (accept) => {
+    for (let cursor = details.length - 1; cursor >= 0; cursor -= 1) {
+      const detail = details[cursor];
+      if (detail[kind] !== id || !accept(detail)) continue;
+      if (kind === "size" && detailType(group, detail) === "collection") continue;
+      return cursor;
+    }
+    return -1;
+  };
   let index = -1;
-  for (let cursor = details.length - 1; cursor >= 0; cursor -= 1) {
-    if (details[cursor][kind] !== id) continue;
-    if (kind === "size" && detailType(group, details[cursor]) === "collection") continue;
-    index = cursor;
-    break;
+  if (scope === "plain") {
+    index = match((detail) => detailInScope(detail, kind, "plain"));
+    if (index < 0) index = match(() => true);
+  } else if (scope) {
+    index = match((detail) => detailInScope(detail, kind, scope));
+  } else {
+    index = match(() => true);
   }
   if (index < 0) return;
   const detail = details[index];
@@ -980,7 +1094,7 @@ function paintCategoryButton(button, group) {
   if (group.use === "known") {
     const total = parseCount(group.count);
     const assigned = specifyKindAssigned(group, kind);
-    value.textContent = total == null ? (assigned ? String(assigned) : "") : `${assigned}/${total}`;
+    value.textContent = total == null ? (assigned ? String(assigned) : "") : `${assigned} of ${total}`;
     button.classList.remove("is-rarity");
     button.style.removeProperty("--chip");
     button.style.removeProperty("--chip-ink");
@@ -1004,38 +1118,113 @@ function paintCategoryButton(button, group) {
 
 function detailsAllCollection(group) {
   const details = group.details || [];
-  return details.length > 0 && details.every((detail) => detail.type === "collection");
+  const count = parseCount(group.count);
+  const slots = count == null ? details.length : count;
+  if (!slots || details.length < slots) return false;
+  return details.slice(0, slots).every((detail) => detail.type === "collection");
 }
 
 function specifyKindAssigned(group, kind) {
   return (group.details || []).filter((detail) => detail[kind]).length;
 }
 
-function choiceStepperField(legendText, kind, extraClass, group, options, ariaLabel) {
+function choiceStepperField(legendText, kind, extraClass, group, options, ariaLabel, scope) {
   const fieldset = document.createElement("fieldset");
-  fieldset.className = "cat-panel";
+  fieldset.className = scope ? "cat-panel is-nested" : "cat-panel";
   fieldset.dataset.catPanel = kind;
-  const locked = kind === "size" && detailsAllCollection(group);
-  fieldset.hidden = locked || group.open !== kind;
-  const legend = document.createElement("legend");
-  legend.textContent = legendText;
+  const locked = kind === "size" && !scope && detailsAllCollection(group);
+  fieldset.hidden = locked || (!scope && group.open !== kind);
+  const scopeKey = scope ? `${scope.kind}:${scope.id}` : "plain";
   const chips = document.createElement("div");
   chips.className = extraClass ? `chips ${extraClass}` : "chips";
   chips.setAttribute("role", "group");
   chips.setAttribute("aria-label", ariaLabel);
   options.forEach((option) => {
-    const count = specifyAssigned(group, kind, option.id);
+    const count = scope
+      ? specifyScopedCount(group, kind, option.id, scope)
+      : specifyAssigned(group, kind, option.id);
+    if (count === 0 && specifyAtMax(group, kind, option.id)) return;
     const wrap = document.createElement("div");
     wrap.className = "chip-wrap";
     wrap.append(
-      specifyStepButton(kind, option, "-1", count === 0),
       specifyCountChip(kind, option, count),
-      specifyStepButton(kind, option, "1", !canAddSpecify(group, kind, option.id))
+      spinColumn(
+        specifyStepButton(kind, option, "1", !canAddSpecify(group, kind, option.id, scope || "plain"), scopeKey),
+        specifyStepButton(kind, option, "-1", count === 0, scopeKey)
+      )
     );
     chips.appendChild(wrap);
   });
-  fieldset.append(legend, chips);
+  if (legendText) {
+    const legend = document.createElement("legend");
+    legend.textContent = legendText;
+    fieldset.appendChild(legend);
+  }
+  if (!scope) {
+    const nests = nestBlock(group, kind);
+    if (nests) fieldset.appendChild(nests);
+  }
+  fieldset.appendChild(chips);
   return fieldset;
+}
+
+function nestValues(group, kind) {
+  return specifyOptions(kind).map((option) => ({
+    id: option.id,
+    label: option.label,
+    color: option.color || "",
+    count: (group.details || []).filter((detail) => detail[kind] === option.id).length
+  })).filter((option) => option.count > 0);
+}
+
+function nestBlock(group, editing) {
+  if (group.open !== editing) return null;
+  const nest = group.nest || "";
+  const others = ["rarity", "type", "size"].filter((kind) => kind !== editing && nestValues(group, kind).length);
+  if (nest && !others.includes(nest.split(":")[0])) group.nest = "";
+  if (!others.length) return null;
+  const list = document.createElement("ul");
+  list.className = "detail-cats sheet-nests";
+  const pair = document.createElement("li");
+  pair.className = "detail-pair";
+  const row = document.createElement("div");
+  row.className = "detail-pair-row";
+  let openKind = "";
+  others.forEach((kind) => {
+    const values = nestValues(group, kind);
+    const total = values.reduce((sum, value) => sum + value.count, 0);
+    const open = nest === kind || nest.startsWith(`${kind}:`);
+    if (open) openKind = kind;
+    const button = detailToggle(specifyLabel(kind), String(total), { expanded: open });
+    button.dataset.nest = kind;
+    row.appendChild(button);
+  });
+  pair.appendChild(row);
+  if (openKind) pair.appendChild(nestValuesBlock(group, editing, openKind));
+  list.appendChild(pair);
+  return list;
+}
+
+function nestValuesBlock(group, editing, kind) {
+  const wrap = document.createElement("div");
+  wrap.className = "detail-subs";
+  const line = document.createElement("div");
+  line.className = "detail-sub-row";
+  const nest = group.nest || "";
+  let openValue = null;
+  nestValues(group, kind).forEach((option) => {
+    const key = `${kind}:${option.id}`;
+    const open = nest === key;
+    if (open) openValue = option;
+    const button = detailToggle(option.label, String(option.count), { expanded: open, color: option.color });
+    button.dataset.nest = key;
+    line.appendChild(button);
+  });
+  wrap.appendChild(line);
+  if (openValue && !(editing === "size" && kind === "type" && openValue.id === "collection")) {
+    wrap.appendChild(choiceStepperField("", editing, specifyChipClass(editing), group, specifyOptions(editing), specifyLabel(editing), { kind, id: openValue.id }));
+  }
+  return wrap;
 }
 
 function categoryValue(group, kind) {
@@ -1271,8 +1460,8 @@ function onSheetClick(event) {
     const entry = step.closest("[data-group]");
     const group = entry && state.groups[Number(entry.dataset.group)];
     if (!group) return;
-    if (Number(step.dataset.specifyStep) < 0) removeSpecify(group, step.dataset.specifyKind, step.dataset.specifyId);
-    else addSpecify(group, step.dataset.specifyKind, step.dataset.specifyId);
+    if (Number(step.dataset.specifyStep) < 0) removeSpecify(group, step.dataset.specifyKind, step.dataset.specifyId, readScope(step.dataset.specifyScope));
+    else addSpecify(group, step.dataset.specifyKind, step.dataset.specifyId, readScope(step.dataset.specifyScope));
     return;
   }
 
@@ -1297,6 +1486,20 @@ function onSheetClick(event) {
     return;
   }
 
+  const nest = event.target.closest("[data-nest]");
+  if (nest) {
+    captureInputs();
+    const entry = nest.closest("[data-group]");
+    const group = entry && state.groups[Number(entry.dataset.group)];
+    if (!group) return;
+    const key = nest.dataset.nest;
+    const current = group.nest || "";
+    group.nest = current === key || current.startsWith(`${key}:`) ? "" : key;
+    rerenderGroups();
+    hideError();
+    return;
+  }
+
   const category = event.target.closest("[data-open-cat]");
   if (category) {
     const entry = category.closest("[data-group]");
@@ -1308,6 +1511,7 @@ function onSheetClick(event) {
     const next = group.open === kind ? "" : kind;
     (group.details || []).forEach((detail) => { detail.open = ""; });
     pruneEmptyDetails(group);
+    group.nest = "";
     group.open = next;
     rerenderGroups();
     hideError();
@@ -1335,6 +1539,7 @@ function onSheetInput(event) {
   if (!group) return;
   if (event.target.classList.contains("group-count")) {
     group.count = event.target.value;
+    trimDetailsToCount(group);
     if (event.target.closest(".johnson-counts")) {
       hideError();
       return;
@@ -1373,6 +1578,13 @@ function onSheetInput(event) {
     if (again) again.focus();
   }
   hideError();
+}
+
+function trimDetailsToCount(group) {
+  const count = parseCount(group.count);
+  if (count == null || !group.details || group.details.length <= count) return;
+  group.details.length = count;
+  pruneEmptyDetails(group);
 }
 
 function expandSharedFactsToDetails(group) {
@@ -2403,9 +2615,11 @@ function renderGroup(container, fieldset, kind, entries) {
     const wrap = document.createElement("div");
     wrap.className = "chip-wrap";
     wrap.append(
-      chipAdjust("-1", kind, entry.id, !canDecrease({}, kind, entry.id)),
       button,
-      chipAdjust("1", kind, entry.id, !canAssign({}, kind, entry.id))
+      spinColumn(
+        chipAdjust("1", kind, entry.id, !canAssign({}, kind, entry.id)),
+        chipAdjust("-1", kind, entry.id, !canDecrease({}, kind, entry.id))
+      )
     );
     container.appendChild(wrap);
   });
@@ -2419,7 +2633,7 @@ function chipAdjust(delta, kind, id, disabled) {
   button.dataset.field = kind;
   button.dataset.id = id;
   button.disabled = disabled;
-  button.textContent = delta === "1" ? "+" : "−";
+  button.textContent = delta === "1" ? "▲" : "▼";
   button.setAttribute("aria-label", delta === "1" ? "Increase" : "Decrease");
   return button;
 }
@@ -3371,7 +3585,7 @@ function stepper(count, field, id, childField, childId, canIncrease, canLower) {
     down.dataset.childField = childField;
     down.dataset.childId = childId;
   }
-  down.textContent = "−";
+  down.textContent = "▼";
   down.disabled = canLower === false || count < 1;
   down.setAttribute("aria-label", "Decrease");
   const number = document.createElement("span");
@@ -3387,10 +3601,10 @@ function stepper(count, field, id, childField, childId, canIncrease, canLower) {
     up.dataset.childField = childField;
     up.dataset.childId = childId;
   }
-  up.textContent = "+";
+  up.textContent = "▲";
   up.disabled = targetId === "unknown" || !canIncrease;
   up.setAttribute("aria-label", "Increase");
-  box.append(down, number, up);
+  box.append(number, spinColumn(up, down));
   return box;
 }
 
@@ -4212,5 +4426,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=241").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=253").catch(() => {});
 }
