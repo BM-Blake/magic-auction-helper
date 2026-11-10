@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=262"),
-      fetch("data/treasures.json?v=262")
+      fetch("data/auction.json?v=263"),
+      fetch("data/treasures.json?v=263")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -3774,7 +3774,7 @@ function blockedByOnlyMax(board, counts, kind, id) {
   const max = board.maxCounts[kind]?.[key];
   if (!Number.isInteger(max)) return false;
   const known = counts[kind]?.[key] || 0;
-  return known === 0 && max <= 0;
+  return known >= max;
 }
 
 function colorQuotaSlots(data, catalog, used, rooms, goldRedLeft, extra) {
@@ -4436,5 +4436,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=262").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=263").catch(() => {});
 }
