@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=279"),
-      fetch("data/treasures.json?v=279")
+      fetch("data/auction.json?v=280"),
+      fetch("data/treasures.json?v=280")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -2261,10 +2261,23 @@ function adjustChip(button) {
   const kind = button.dataset.field;
   const id = button.dataset.id;
   const delta = Number(button.dataset.chipAdjust);
-  const changed = delta > 0 ? increaseChild({}, kind, id) : decreaseChild({}, kind, id);
+  const changed = delta > 0 ? increaseChip(kind, id) : decreaseChild({}, kind, id);
   if (!changed) return;
   persist();
   render();
+}
+
+function increaseChip(kind, id) {
+  if (id === "unknown" || atCategoryMax(kind, id)) return false;
+  if (!roomForAnotherTreasure()) return increaseChild({}, kind, id);
+  if (blockedByMaxedCategory({})) return false;
+  return createTreasure({}, kind, id);
+}
+
+function roomForAnotherTreasure() {
+  const total = state.board && state.board.treasureTotal;
+  if (!Number.isInteger(total) || total <= 0) return true;
+  return state.board.items.length < total;
 }
 
 function adjustTop(button, delta) {
@@ -2914,6 +2927,7 @@ function canDecrease(facts, field, id) {
 
 function canAssign(facts, field, id) {
   if (id === "unknown" || atCategoryMax(field, id)) return false;
+  if (!positiveFact(facts) && roomForAnotherTreasure()) return !blockedByMaxedCategory(facts) && freshFacts(facts, field, id) != null;
   const pool = Object.assign({}, facts);
   writeDetailFact(pool, field, "unknown");
   if (revealingNewTreasure(facts, field)) return !blockedByMaxedCategory(facts) && freshFacts(facts, field, id) != null;
@@ -4705,5 +4719,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=279").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=280").catch(() => {});
 }
