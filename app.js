@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=264"),
-      fetch("data/treasures.json?v=264")
+      fetch("data/auction.json?v=267"),
+      fetch("data/treasures.json?v=267")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -59,6 +59,11 @@ function bindStaticEvents() {
   $("#known-toggle").addEventListener("click", onKnownToggle);
   $("#known-menu").addEventListener("click", closeKnownMenu);
   document.addEventListener("click", onPickerDismiss);
+  document.addEventListener("click", (event) => {
+    if (event.target.closest(".name-picker")) return;
+    document.querySelectorAll(".name-menu").forEach((menu) => { menu.hidden = true; });
+    document.querySelectorAll(".name-toggle").forEach((button) => button.setAttribute("aria-expanded", "false"));
+  });
   document.addEventListener("keydown", onPickerKey);
   $("#end-game").addEventListener("click", endGame);
   $("#game-start").addEventListener("click", showGame);
@@ -1166,6 +1171,18 @@ function choiceStepperField(legendText, kind, extraClass, group, options, ariaLa
   return fieldset;
 }
 
+function openedNestKey(group, kind) {
+  const values = nestValues(group, kind);
+  if (values.length === 1) return `${kind}:${values[0].id}`;
+  return kind;
+}
+
+function soleNestKey(group, editing) {
+  const others = ["rarity", "type", "size"].filter((kind) => kind !== editing && nestValues(group, kind).length);
+  if (others.length !== 1) return "";
+  return openedNestKey(group, others[0]);
+}
+
 function nestValues(group, kind) {
   return specifyOptions(kind).map((option) => ({
     id: option.id,
@@ -1493,7 +1510,8 @@ function onSheetClick(event) {
     const key = nest.dataset.nest;
     const current = group.nest || "";
     if (key.includes(":")) group.nest = current === key ? key.slice(0, key.indexOf(":")) : key;
-    else group.nest = current === key || current.startsWith(`${key}:`) ? "" : key;
+    else if (current === key || current.startsWith(`${key}:`)) group.nest = "";
+    else group.nest = openedNestKey(group, key);
     rerenderGroups();
     hideError();
     return;
@@ -1510,7 +1528,7 @@ function onSheetClick(event) {
     const next = group.open === kind ? "" : kind;
     (group.details || []).forEach((detail) => { detail.open = ""; });
     pruneEmptyDetails(group);
-    group.nest = "";
+    group.nest = next ? soleNestKey(group, next) : "";
     group.open = next;
     rerenderGroups();
     hideError();
@@ -3113,7 +3131,9 @@ function itemCard(item) {
     titleRow.append(title, itemRemoveButton(item));
     card.appendChild(titleRow);
   } else {
-    card.appendChild(itemCardActions(item, view, snapped));
+    const choices = matchingTreasures(view);
+    const nameChoices = !snapped && choices.length > 1 && choices.length <= 6 ? choices : null;
+    card.appendChild(itemCardActions(view, snapped, nameChoices));
   }
   card.append(
     itemPriceField(view, locked),
@@ -3121,18 +3141,19 @@ function itemCard(item) {
     itemFactSelect(view, "type", locked),
     itemFactSelect(view, "size", locked)
   );
-  const choices = locked ? [] : matchingTreasures(view);
-  if (choices.length > 1 && choices.length <= 6) card.appendChild(itemNameField(view, choices));
   return card;
 }
 
-function itemCardActions(item, view, snapped) {
+function itemCardActions(view, snapped, choices) {
   const row = document.createElement("div");
   row.className = "item-card-actions";
-  const title = document.createElement("p");
-  title.className = snapped ? "item-name" : "item-name is-placeholder";
-  title.textContent = snapped && view.catalogName ? view.catalogName : "Unknown";
-  row.appendChild(title);
+  if (choices) row.appendChild(itemNamePicker(view, choices));
+  else {
+    const title = document.createElement("p");
+    title.className = snapped ? "item-name" : "item-name is-placeholder";
+    title.textContent = snapped && view.catalogName ? view.catalogName : "Unknown";
+    row.appendChild(title);
+  }
   if (snapped) row.appendChild(itemUndoButton());
   return row;
 }
@@ -3173,27 +3194,85 @@ function removeLockedItem(id) {
   render();
 }
 
-function itemNameField(item, choices) {
-  const label = document.createElement("label");
-  label.className = "field";
-  const name = document.createElement("span");
-  name.textContent = "Name";
+function itemNamePicker(item, choices) {
+  const picker = document.createElement("div");
+  picker.className = "name-picker";
   const select = document.createElement("select");
+  select.className = "visually-hidden";
   select.dataset.itemField = "name";
-  select.setAttribute("aria-label", "Name");
-  const blank = document.createElement("option");
-  blank.value = "";
-  blank.textContent = "Unknown";
-  select.appendChild(blank);
-  choices.forEach((treasure) => {
+  select.tabIndex = -1;
+  select.setAttribute("aria-hidden", "true");
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "name-toggle";
+  toggle.setAttribute("aria-haspopup", "listbox");
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.setAttribute("aria-label", "Name");
+  const menu = document.createElement("ul");
+  menu.className = "name-menu";
+  menu.hidden = true;
+  menu.setAttribute("role", "listbox");
+  menu.setAttribute("aria-label", "Name");
+  const chosen = choices.some((treasure) => treasure.name === item.catalogName) ? item.catalogName : "";
+  const addOption = (value, labelText, price) => {
     const option = document.createElement("option");
-    option.value = treasure.name;
-    option.textContent = treasure.name;
+    option.value = value;
+    option.textContent = labelText;
     select.appendChild(option);
+    const itemButton = document.createElement("button");
+    itemButton.type = "button";
+    itemButton.className = "name-option";
+    itemButton.setAttribute("role", "option");
+    itemButton.setAttribute("aria-selected", value === chosen ? "true" : "false");
+    const title = document.createElement("span");
+    title.textContent = labelText;
+    itemButton.appendChild(title);
+    if (price) {
+      const cost = document.createElement("span");
+      cost.className = "name-price";
+      cost.textContent = price;
+      itemButton.appendChild(cost);
+    }
+    itemButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      select.value = value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const row = document.createElement("li");
+    row.appendChild(itemButton);
+    menu.appendChild(row);
+  };
+  addOption("", "Unknown", "");
+  choices.forEach((treasure) => addOption(treasure.name, treasure.name, shortCoins(treasure.price)));
+  select.value = chosen;
+  const label = document.createElement("span");
+  label.textContent = chosen || "Unknown";
+  toggle.appendChild(label);
+  if (!chosen) toggle.classList.add("is-placeholder");
+  toggle.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const open = menu.hidden;
+    document.querySelectorAll(".name-menu").forEach((list) => { list.hidden = true; });
+    document.querySelectorAll(".name-toggle").forEach((button) => button.setAttribute("aria-expanded", "false"));
+    menu.hidden = !open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
   });
-  select.value = choices.some((treasure) => treasure.name === item.catalogName) ? item.catalogName : "";
-  label.append(name, select);
-  return label;
+  picker.append(toggle, menu, select);
+  return picker;
+}
+
+function shortCoins(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "";
+  if (amount >= 1000000) return `${trimCoin(amount / 1000000)}m`;
+  if (amount >= 1000) return `${trimCoin(amount / 1000)}k`;
+  return String(Math.round(amount));
+}
+
+function trimCoin(value) {
+  return String(Math.round(value * 10) / 10).replace(/\.0$/, "");
 }
 
 function itemPriceField(item, locked) {
@@ -4389,5 +4468,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=264").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=267").catch(() => {});
 }
