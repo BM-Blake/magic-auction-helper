@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=257"),
-      fetch("data/treasures.json?v=257")
+      fetch("data/auction.json?v=261"),
+      fetch("data/treasures.json?v=261")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1039,7 +1039,6 @@ function removeSpecify(group, kind, id, scope) {
   let index = -1;
   if (scope === "plain") {
     index = match((detail) => detailInScope(detail, kind, "plain"));
-    if (index < 0) index = match(() => true);
   } else if (scope) {
     index = match((detail) => detailInScope(detail, kind, scope));
   } else {
@@ -1140,16 +1139,15 @@ function choiceStepperField(legendText, kind, extraClass, group, options, ariaLa
   chips.setAttribute("role", "group");
   chips.setAttribute("aria-label", ariaLabel);
   options.forEach((option) => {
-    const count = scope
-      ? specifyScopedCount(group, kind, option.id, scope)
-      : specifyAssigned(group, kind, option.id);
-    if (count === 0 && specifyAtMax(group, kind, option.id)) return;
+    const count = specifyScopedCount(group, kind, option.id, scope || "plain");
+    const canAdd = canAddSpecify(group, kind, option.id, scope || "plain");
+    if (count === 0 && !canAdd) return;
     const wrap = document.createElement("div");
     wrap.className = "chip-wrap";
     wrap.append(
       specifyCountChip(kind, option, count),
       spinColumn(
-        specifyStepButton(kind, option, "1", !canAddSpecify(group, kind, option.id, scope || "plain"), scopeKey),
+        specifyStepButton(kind, option, "1", !canAdd, scopeKey),
         specifyStepButton(kind, option, "-1", count === 0, scopeKey)
       )
     );
@@ -1161,10 +1159,10 @@ function choiceStepperField(legendText, kind, extraClass, group, options, ariaLa
     fieldset.appendChild(legend);
   }
   if (!scope) {
+    if (chips.childElementCount) fieldset.appendChild(chips);
     const nests = nestBlock(group, kind);
     if (nests) fieldset.appendChild(nests);
-  }
-  fieldset.appendChild(chips);
+  } else fieldset.appendChild(chips);
   return fieldset;
 }
 
@@ -1494,7 +1492,8 @@ function onSheetClick(event) {
     if (!group) return;
     const key = nest.dataset.nest;
     const current = group.nest || "";
-    group.nest = current === key || current.startsWith(`${key}:`) ? "" : key;
+    if (key.includes(":")) group.nest = current === key ? key.slice(0, key.indexOf(":")) : key;
+    else group.nest = current === key || current.startsWith(`${key}:`) ? "" : key;
     rerenderGroups();
     hideError();
     return;
@@ -2144,8 +2143,7 @@ function decreaseChild(facts, field, id) {
 }
 
 function fieldToClear(facts, field) {
-  const opened = state.selected && state.selected.kind;
-  if (opened && opened !== field && factSpecified(facts, opened)) return opened;
+  if (field !== "types" && state.selected && state.selected.kind === "types" && factSpecified(facts, "types")) return "types";
   return field;
 }
 
@@ -4438,5 +4436,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=257").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=261").catch(() => {});
 }

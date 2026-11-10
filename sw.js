@@ -1,13 +1,13 @@
-const CACHE = "magic-auction-v257";
+const CACHE = "magic-auction-v261";
 
 const ASSETS = [
   "./index.html",
-  "./styles.css?v=257",
-  "./app.js?v=257",
-  "./data/auction.json?v=257",
-  "./data/treasures.json?v=257",
+  "./styles.css?v=261",
+  "./app.js?v=261",
+  "./data/auction.json?v=261",
+  "./data/treasures.json?v=261",
   "./manifest.webmanifest",
-  "./icon.png?v=257"
+  "./icon.png?v=261"
 ];
 
 self.addEventListener("install", (event) => {
