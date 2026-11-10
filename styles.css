@@ -1228,7 +1228,6 @@ legend {
   font-weight: 500;
 }
 
-.item-save,
 .item-undo {
   width: 32px;
   height: 32px;
@@ -1239,13 +1238,6 @@ legend {
   color: var(--text);
   line-height: 1;
   font-size: 1rem;
-}
-
-.item-save {
-  background: var(--gold);
-  border-color: transparent;
-  color: var(--gold-ink);
-  font-weight: 700;
 }
 
 .item-name-row .item-name {

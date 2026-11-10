@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=263"),
-      fetch("data/treasures.json?v=263")
+      fetch("data/auction.json?v=264"),
+      fetch("data/treasures.json?v=264")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -2531,7 +2531,7 @@ function assignOnlyPossibleRarity() {
   if (open.length !== 1) return false;
   const color = open[0];
   const room = maxes[color] - (counts.rarities[color] || 0);
-  const missing = board.items.filter((item) => (!item.rarity || item.rarity === "unknown") && !exactTreasure(item));
+  const missing = board.items.filter((item) => (!item.rarity || item.rarity === "unknown") && !exactTreasure(item) && !itemSnapHeld(item));
   if (!missing.length || missing.length > room) return false;
   const fits = missing.every((item) => catalogSupports({
     rarity: color,
@@ -3134,7 +3134,6 @@ function itemCardActions(item, view, snapped) {
   title.textContent = snapped && view.catalogName ? view.catalogName : "Unknown";
   row.appendChild(title);
   if (snapped) row.appendChild(itemUndoButton());
-  if (itemDraftDirty(item)) row.appendChild(itemSaveButton(item));
   return row;
 }
 
@@ -3148,20 +3147,6 @@ function itemUndoButton() {
     event.preventDefault();
     event.stopPropagation();
     undoItemSnap();
-  });
-  return button;
-}
-
-function itemSaveButton(item) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "item-save";
-  button.textContent = "✓";
-  button.setAttribute("aria-label", "Save");
-  button.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    commitItemCard(item.id);
   });
   return button;
 }
@@ -3322,7 +3307,7 @@ function fillOnlyPossibleFacts() {
   while (progress) {
     progress = false;
     state.board.items.forEach((item) => {
-      if (exactTreasure(item)) return;
+      if (exactTreasure(item) || itemSnapHeld(item)) return;
       if (fillViewFacts(item)) {
         changed = true;
         progress = true;
@@ -3355,11 +3340,11 @@ function onItemEdit(event) {
     return;
   }
   if (sameFacts(previous, draft.view)) return;
+  draft.suppressExact = false;
   considerSnap(draft, previous);
-  if (field === "price" && !draft.snapped) {
-    refreshItemSave(item.id);
-    return;
-  }
+  writeItemFromDraft(draft);
+  persist();
+  if (field === "price" && !draft.snapped) return;
   render();
 }
 
@@ -3399,9 +3384,9 @@ function sameFacts(left, right) {
     && (left.catalogName || "") === (right.catalogName || "");
 }
 
-function itemDraftDirty(item) {
+function itemSnapHeld(item) {
   const draft = itemDraftFor(item.id);
-  return Boolean(draft && (draft.snapped || !sameFacts(draft.view, draft.saved)));
+  return Boolean(draft && draft.suppressExact);
 }
 
 function applyDraftField(view, field, target) {
@@ -3486,52 +3471,16 @@ function applyTreasure(view, treasure) {
   if (view.price == null && Number.isFinite(Number(treasure.price))) view.price = Number(treasure.price);
 }
 
-function refreshItemSave(id) {
-  const row = document.querySelector(`.item-card[data-item="${id}"] .item-card-actions`);
-  const item = state.board && state.board.items.find((entry) => entry.id === id);
-  if (!row || !item) return;
-  const existing = row.querySelector(".item-save");
-  if (itemDraftDirty(item)) {
-    if (!existing) row.appendChild(itemSaveButton(item));
-    return;
-  }
-  if (existing) existing.remove();
-}
-
-function commitItemCard(id) {
-  const item = state.board && state.board.items.find((entry) => entry.id === id);
-  if (!item || exactTreasure(item)) return;
-  const draft = ensureItemDraft(item);
-  const card = document.querySelector(`.item-card[data-item="${id}"]`);
-  const input = card && card.querySelector('[data-item-field="price"]');
-  if (input && !input.disabled) {
-    const previous = cloneItemFacts(draft.view);
-    if (!readPriceInput(input, draft.view)) return;
-    if (!sameFacts(previous, draft.view)) {
-      considerSnap(draft, previous);
-      if (draft.snapped) {
-        render();
-        return;
-      }
-    }
-  }
-  saveItemDraft();
-}
-
-function saveItemDraft() {
-  const draft = state.itemDraft;
-  if (!draft || !state.board || !itemDraftDirty({ id: draft.id })) return;
-  const item = state.board.items.find((entry) => entry.id === draft.id);
-  if (!item || exactTreasure(item)) return;
+function writeItemFromDraft(draft) {
+  const item = state.board && state.board.items.find((entry) => entry.id === draft.id);
+  if (!item) return;
   item.rarity = draft.view.rarity || "";
   item.type = draft.view.type || "";
   item.size = draft.view.size == null || draft.view.size === "" ? null : draft.view.size;
   item.price = draft.view.price == null ? null : draft.view.price;
   if (draft.view.catalogName) item.catalogName = draft.view.catalogName;
   else delete item.catalogName;
-  state.itemDraft = null;
-  persist();
-  render();
+  draft.saved = cloneItemFacts(item);
 }
 
 function undoItemSnap() {
@@ -3540,6 +3489,9 @@ function undoItemSnap() {
   draft.view = cloneItemFacts(draft.beforeSnap);
   draft.beforeSnap = null;
   draft.snapped = false;
+  draft.suppressExact = true;
+  writeItemFromDraft(draft);
+  persist();
   render();
 }
 
@@ -4154,6 +4106,7 @@ function resolveExactItems() {
   if (!state.board) return false;
   let changed = false;
   state.board.items.forEach((item) => {
+    if (itemSnapHeld(item)) return;
     const treasure = exactTreasure(item);
     if (!treasure) {
       if (item.catalogName) {
@@ -4436,5 +4389,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=263").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=264").catch(() => {});
 }
