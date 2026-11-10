@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=278"),
-      fetch("data/treasures.json?v=278")
+      fetch("data/auction.json?v=279"),
+      fetch("data/treasures.json?v=279")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1871,7 +1871,10 @@ function onAdd(event) {
       firstRarityMax.add(spec.rarity);
     }
   });
-  if (totalSpecs.length === 1) state.board.treasureTotal = totalSpecs[0].count;
+  if (totalSpecs.length === 1) {
+    state.board.treasureTotal = totalSpecs[0].count;
+    state.board.treasureTotalLocked = true;
+  }
   applyMaxes(maxSpecs);
   firstRarityMax.forEach((rarity) => revealUnknownForMax(rarity, state.board.maxCounts.rarities[rarity]));
 
@@ -2088,10 +2091,15 @@ function additionPastMax(specs) {
       }
     }
     const lower = ["gray", "green", "blue", "purple"];
-    const total = state.board.treasureTotal;
+    const storedTotal = state.board.treasureTotal;
+    const manual = specs.find((spec) => spec.use === "max" && categoryPicks(spec).length === 0);
+    const cap = manual ? manual.count : (Number.isInteger(storedTotal) && storedTotal > 0 ? storedTotal : null);
+    if (cap != null && state.board.items.length > cap && state.board.items.length > snapshot.items.length) {
+      return { message: `That would be ${state.board.items.length}/${cap} treasures.` };
+    }
     const addingGoldOrRed = touched.rarities.gold || touched.rarities.red;
-    if (addingGoldOrRed && Number.isInteger(total) && total > 0 && lower.every((id) => Number.isInteger(maxes.rarities[id]))) {
-      const allowance = total - lower.reduce((sum, id) => sum + maxes.rarities[id], 0);
+    if (addingGoldOrRed && cap != null && lower.every((id) => Number.isInteger(maxes.rarities[id]))) {
+      const allowance = cap - lower.reduce((sum, id) => sum + maxes.rarities[id], 0);
       const projected = (counts.rarities.gold || 0) + (counts.rarities.red || 0);
       if (projected > allowance) {
         const id = touched.rarities.red && !touched.rarities.gold ? "red" : "gold";
@@ -2551,6 +2559,7 @@ function endGame() {
   recordMatch();
   state.board.items = [];
   state.board.treasureTotal = null;
+  state.board.treasureTotalLocked = false;
   state.board.maxCounts = emptyMaxCounts();
   state.selected = null;
   state.detailOpen = null;
@@ -2797,20 +2806,28 @@ function renderTreasureTotal() {
   const recorded = state.board ? state.board.items.length : 0;
   const cap = state.board ? state.board.treasureTotal : null;
   const known = Number.isInteger(cap) && cap > 0;
+  const locked = Boolean(known && state.board.treasureTotalLocked);
   total.textContent = known ? `${recorded}/${cap}` : String(recorded);
   if (!button) return;
-  const marked = known && cap === recorded;
-  button.hidden = recorded < 1;
+  const marked = locked || (known && cap === recorded);
+  button.hidden = recorded < 1 && !known;
+  button.disabled = locked;
   button.setAttribute("aria-pressed", marked ? "true" : "false");
-  button.setAttribute("aria-label", marked ? "Clear the treasure total" : "Set the current count as the treasure total");
+  button.setAttribute("aria-label", locked
+    ? "Treasure total is set"
+    : marked
+      ? "Clear the treasure total"
+      : "Set the current count as the treasure total");
 }
 
 function setTreasureMax() {
-  if (!state.board) return;
+  if (!state.board || state.board.treasureTotalLocked) return;
   const recorded = state.board.items.length;
   if (recorded < 1) return;
   const cap = state.board.treasureTotal;
-  state.board.treasureTotal = Number.isInteger(cap) && cap === recorded ? null : recorded;
+  const marked = Number.isInteger(cap) && cap === recorded;
+  state.board.treasureTotal = marked ? null : recorded;
+  state.board.treasureTotalLocked = false;
   persist();
   render();
 }
@@ -4607,7 +4624,7 @@ function zeroSizes(presets) {
 }
 
 function loadBoard() {
-  const blank = { house: state.data.houses[0].id, hero: state.data.heroes[0].id, items: [], treasureTotal: null, maxCounts: emptyMaxCounts() };
+  const blank = { house: state.data.houses[0].id, hero: state.data.heroes[0].id, items: [], treasureTotal: null, treasureTotalLocked: false, maxCounts: emptyMaxCounts() };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     if (!saved || typeof saved !== "object") return blank;
@@ -4616,11 +4633,13 @@ function loadBoard() {
       if (item.type === "figurine") item.type = "collection";
     });
     const total = Number(saved.treasureTotal);
+    const treasureTotal = Number.isInteger(total) && total > 0 ? total : null;
     return {
       house: typeof saved.house === "string" ? saved.house : blank.house,
       hero: typeof saved.hero === "string" ? saved.hero : blank.hero,
       items,
-      treasureTotal: Number.isInteger(total) && total > 0 ? total : null,
+      treasureTotal,
+      treasureTotalLocked: treasureTotal != null && (saved.treasureTotalLocked === true || treasureTotal !== items.length),
       maxCounts: normalizeMaxCounts(saved.maxCounts)
     };
   } catch (error) {
@@ -4686,5 +4705,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=278").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=279").catch(() => {});
 }

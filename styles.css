@@ -1759,6 +1759,11 @@ select.group-use {
   color: var(--gold-ink);
 }
 
+#treasure-max:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
 .exact .field {
   margin-top: 0;
   color: var(--muted);

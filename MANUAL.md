@@ -8,7 +8,7 @@ Choose a hero and an auction house, then tap Game Start. End game saves the roun
 
 ## Adding treasures
 
-Tap + to add information. Known count adds that many treasures. Open rarity, type, or size and use the up and down arrows beside each count to split that count across different values, the same way the information card does. Max replaces that category's maximum. A lower maximum removes treasures that have only that category until the listed count matches. It is refused when a treasure that already has another property would have to be removed. Both replaces the listed count and the maximum with the new number, using that same rule. A maximum with no rarity, type, or size sets the treasure total. Max beside Total treasures saves the current count as the treasure total, and tapping it again clears it.
+Tap + to add information. Known count adds that many treasures. Open rarity, type, or size and use the up and down arrows beside each count to split that count across different values, the same way the information card does. Max replaces that category's maximum. A lower maximum removes treasures that have only that category until the listed count matches. It is refused when a treasure that already has another property would have to be removed. Both replaces the listed count and the maximum with the new number, using that same rule. A maximum with no rarity, type, or size sets the treasure total and keeps Max on. You cannot add treasures past that total. Max beside Total treasures saves the current count as the treasure total, and tapping it again clears that one.
 
 ## Heroes
 
