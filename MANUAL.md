@@ -8,7 +8,7 @@ Choose a hero and an auction house, then tap Game Start. End game saves the roun
 
 ## Adding treasures
 
-Tap + to add information. Each count adds that many treasures. Known count records treasures you have seen. Open rarity, type, or size and use the up and down arrows beside each count to split that count across different values, the same way the information card does. Max sets a maximum. Both uses the same number for the count and the maximum. A maximum with no rarity, type, or size sets the treasure total.
+Tap + to add information. Known count adds that many treasures. Open rarity, type, or size and use the up and down arrows beside each count to split that count across different values, the same way the information card does. Max replaces that category's maximum. A lower maximum removes treasures that have only that category until the listed count matches. It is refused when a treasure that already has another property would have to be removed. Both replaces the listed count and the maximum with the new number, using that same rule. A maximum with no rarity, type, or size sets the treasure total. Max beside Total treasures saves the current count as the treasure total, and tapping it again clears it.
 
 ## Heroes
 
@@ -18,7 +18,7 @@ The first time you add information as Johnson, gray, green, and blue share one c
 
 ## Read what you have
 
-A chip appears when that rarity, type, or size has a count. Tap it to open those treasures. A count shows as listed/maximum. Unknown holds treasures that are still missing that fact. You cannot add more of a category than its maximum.
+A chip appears when that rarity, type, or size has a listed treasure, or a maximum above zero. Tap it to open those treasures. With two or more, the other categories stay available above the list. One treasure opens on its own. A count shows as listed/maximum. Unknown holds treasures that are still missing that fact. You cannot add more of a category than its maximum.
 
 ## Worth and bids
 
