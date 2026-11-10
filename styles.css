@@ -1739,7 +1739,25 @@ select.group-use {
   line-height: 1;
 }
 
-.exact { margin: 0 0 14px; }
+.exact-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.exact-line .exact-total { margin: 6px 0 0; }
+
+#treasure-max {
+  margin-top: 6px;
+  color: var(--text);
+}
+
+#treasure-max[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--gold);
+  color: var(--gold-ink);
+}
 
 .exact .field {
   margin-top: 0;

@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=270"),
-      fetch("data/treasures.json?v=270")
+      fetch("data/auction.json?v=272"),
+      fetch("data/treasures.json?v=272")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -93,6 +93,7 @@ function bindStaticEvents() {
   $("#sizes").addEventListener("click", onSummaryClick);
   $("#detail-list").addEventListener("click", onDetailClick);
   $("#detail").addEventListener("change", onItemEdit);
+  $("#treasure-max").addEventListener("click", setTreasureMax);
 }
 
 function showMenu() {
@@ -936,6 +937,55 @@ function specifyCountChip(kind, option, count, fillScope) {
   return chip;
 }
 
+function specifyProbe(group, detail, kind, id) {
+  const facts = detailFacts(group, detail || emptyDetail());
+  if (kind === "rarity") facts.rarity = id;
+  else if (kind === "type") facts.type = id;
+  else facts.size = id;
+  if (kind === "type" && id === "collection") facts.size = collectionShape();
+  const price = detail && detail.price != null && detail.price !== "" ? Number(detail.price) : null;
+  return {
+    rarity: facts.rarity || "",
+    type: facts.type || "",
+    size: facts.size ? facts.size : null,
+    price: Number.isFinite(price) ? price : null
+  };
+}
+
+function usesProbe(item, probe) {
+  if (!probe.rarity && !probe.type && probe.size == null) return false;
+  if (probe.rarity && item.rarity !== probe.rarity) return false;
+  if (probe.type && !typeMatches(item.type || "", probe.type)) return false;
+  if (probe.size != null && sizeKey(item.size) !== sizeKey(probe.size)) return false;
+  if (probe.price != null && Number(item.price) !== probe.price) return false;
+  if (probe.rarity && !item.rarity) return false;
+  if (probe.type && !item.type) return false;
+  if (probe.size != null && (item.size == null || item.size === "")) return false;
+  return true;
+}
+
+function probeTaken(group, probe, exceptDetail) {
+  let taken = (state.board && state.board.items || []).filter((item) => usesProbe(item, probe)).length;
+  (group.details || []).forEach((detail) => {
+    if (detail === exceptDetail) return;
+    const view = {
+      rarity: detail.rarity || group.rarity || "",
+      type: detail.type || group.type || "",
+      size: detail.size || group.size || null,
+      price: detail.price != null && detail.price !== "" ? Number(detail.price) : null
+    };
+    if (view.size === "") view.size = null;
+    if (usesProbe(view, probe)) taken += 1;
+  });
+  return taken;
+}
+
+function specifyWithinCatalog(group, detail, kind, id) {
+  const probe = specifyProbe(group, detail, kind, id);
+  const supply = matchingTreasures(probe).length;
+  return supply > 0 && probeTaken(group, probe, detail) < supply;
+}
+
 function specifyFits(group, detail, kind, id) {
   if (kind === "size" && (group.type === "collection" || detailType(group, detail) === "collection")) return false;
   return catalogSupports(choiceFacts(detailFacts(group, detail), kind, id));
@@ -964,22 +1014,22 @@ function canAddSpecify(group, kind, id, scope) {
   if (kind === "size" && !scope && (group.type === "collection" || detailsAllCollection(group))) return false;
   const count = parseCount(group.count);
   if (scope && scope !== "plain") {
-    return (group.details || []).some((detail) => detailInScope(detail, kind, scope) && !detail[kind] && specifyFits(group, detail, kind, id));
+    return (group.details || []).some((detail) => detailInScope(detail, kind, scope) && !detail[kind] && specifyFits(group, detail, kind, id) && specifyWithinCatalog(group, detail, kind, id));
   }
   if (scope === "plain") {
     if (count == null) return true;
     if (plainRoom(group, kind) === 0) return false;
     const details = group.details || [];
-    if (details.some((detail) => detailInScope(detail, kind, "plain") && !detail[kind] && specifyFits(group, detail, kind, id))) return true;
+    if (details.some((detail) => detailInScope(detail, kind, "plain") && !detail[kind] && specifyFits(group, detail, kind, id) && specifyWithinCatalog(group, detail, kind, id))) return true;
     if (details.length >= count) return false;
-    return specifyFits(group, emptyDetail(), kind, id);
+    return specifyFits(group, emptyDetail(), kind, id) && specifyWithinCatalog(group, emptyDetail(), kind, id);
   }
   if (count == null) return true;
   if (unknownInGroup(group, kind) === 0) return false;
   const details = group.details || [];
-  if (details.some((detail) => !detail[kind] && specifyFits(group, detail, kind, id))) return true;
+  if (details.some((detail) => !detail[kind] && specifyFits(group, detail, kind, id) && specifyWithinCatalog(group, detail, kind, id))) return true;
   if (details.length >= count) return false;
-  return specifyFits(group, emptyDetail(), kind, id);
+  return specifyFits(group, emptyDetail(), kind, id) && specifyWithinCatalog(group, emptyDetail(), kind, id);
 }
 
 function addSpecify(group, kind, id, scope) {
@@ -991,7 +1041,7 @@ function addSpecify(group, kind, id, scope) {
   }
   if (specifyAtMax(group, kind, id)) return;
   if (scope && scope !== "plain") {
-    const index = group.details.findIndex((detail) => detailInScope(detail, kind, scope) && !detail[kind] && specifyFits(group, detail, kind, id));
+    const index = group.details.findIndex((detail) => detailInScope(detail, kind, scope) && !detail[kind] && specifyFits(group, detail, kind, id) && specifyWithinCatalog(group, detail, kind, id));
     if (index < 0) return;
     writeSpecify(group.details[index], kind, id);
     rerenderGroups();
@@ -1003,9 +1053,9 @@ function addSpecify(group, kind, id, scope) {
       showError("Every treasure in this count is already specified.");
       return;
     }
-    let index = group.details.findIndex((detail) => detailInScope(detail, kind, "plain") && !detail[kind] && specifyFits(group, detail, kind, id));
+    let index = group.details.findIndex((detail) => detailInScope(detail, kind, "plain") && !detail[kind] && specifyFits(group, detail, kind, id) && specifyWithinCatalog(group, detail, kind, id));
     if (index < 0) {
-      if (group.details.length >= count || !specifyFits(group, emptyDetail(), kind, id)) return;
+      if (group.details.length >= count || !specifyFits(group, emptyDetail(), kind, id) || !specifyWithinCatalog(group, emptyDetail(), kind, id)) return;
       group.details.push(emptyDetail());
       index = group.details.length - 1;
     }
@@ -1018,9 +1068,9 @@ function addSpecify(group, kind, id, scope) {
     showError("Every treasure in this count is already specified.");
     return;
   }
-  let index = group.details.findIndex((detail) => !detail[kind] && specifyFits(group, detail, kind, id));
+  let index = group.details.findIndex((detail) => !detail[kind] && specifyFits(group, detail, kind, id) && specifyWithinCatalog(group, detail, kind, id));
   if (index < 0) {
-    if (group.details.length >= count || !specifyFits(group, emptyDetail(), kind, id)) return;
+    if (group.details.length >= count || !specifyFits(group, emptyDetail(), kind, id) || !specifyWithinCatalog(group, emptyDetail(), kind, id)) return;
     group.details.push(emptyDetail());
     index = group.details.length - 1;
   }
@@ -1041,12 +1091,12 @@ function fillSpecify(group, kind, id, scope) {
   group.details.forEach((detail) => {
     if (detail[kind]) return;
     if (scoped && !detailInScope(detail, kind, scope)) return;
-    if (specifyAtMax(group, kind, id) || !specifyFits(group, detail, kind, id)) return;
+    if (specifyAtMax(group, kind, id) || !specifyFits(group, detail, kind, id) || !specifyWithinCatalog(group, detail, kind, id)) return;
     writeSpecify(detail, kind, id);
     changed = true;
   });
   if (!scoped) {
-    while (group.details.length < count && !specifyAtMax(group, kind, id) && specifyFits(group, emptyDetail(), kind, id)) {
+    while (group.details.length < count && !specifyAtMax(group, kind, id) && specifyFits(group, emptyDetail(), kind, id) && specifyWithinCatalog(group, emptyDetail(), kind, id)) {
       const detail = emptyDetail();
       group.details.push(detail);
       writeSpecify(detail, kind, id);
@@ -2652,10 +2702,27 @@ function renderRarityLegend(counts) {
 
 function renderTreasureTotal() {
   const total = $("#treasure-total");
+  const button = $("#treasure-max");
   if (!total) return;
   const recorded = state.board ? state.board.items.length : 0;
   const cap = state.board ? state.board.treasureTotal : null;
-  total.textContent = Number.isInteger(cap) && cap > 0 ? `${recorded}/${cap}` : String(recorded);
+  const known = Number.isInteger(cap) && cap > 0;
+  total.textContent = known ? `${recorded}/${cap}` : String(recorded);
+  if (!button) return;
+  const marked = known && cap === recorded;
+  button.hidden = recorded < 1;
+  button.setAttribute("aria-pressed", marked ? "true" : "false");
+  button.setAttribute("aria-label", marked ? "Clear the treasure total" : "Set the current count as the treasure total");
+}
+
+function setTreasureMax() {
+  if (!state.board) return;
+  const recorded = state.board.items.length;
+  if (recorded < 1) return;
+  const cap = state.board.treasureTotal;
+  state.board.treasureTotal = Number.isInteger(cap) && cap === recorded ? null : recorded;
+  persist();
+  render();
 }
 
 function renderGroup(container, fieldset, kind, entries) {
@@ -4219,13 +4286,25 @@ function matchingTreasures(item) {
   }).sort((left, right) => left.name.localeCompare(right.name));
 }
 
+function uniqueClaimedEarlier(item, name) {
+  const items = state.board && state.board.items || [];
+  for (const other of items) {
+    if (other === item) return false;
+    if (other.catalogName === name) return true;
+    const matches = matchingTreasures(other);
+    if (matches.length === 1 && matches[0].name === name) return true;
+  }
+  return false;
+}
+
 function exactTreasure(item) {
   const matches = matchingTreasures(item);
   if (item && item.catalogName) {
     const chosen = matches.find((treasure) => treasure.name === item.catalogName);
-    if (chosen) return chosen;
+    if (chosen && !uniqueClaimedEarlier(item, chosen.name)) return chosen;
   }
-  return matches.length === 1 ? matches[0] : null;
+  if (matches.length !== 1 || uniqueClaimedEarlier(item, matches[0].name)) return null;
+  return matches[0];
 }
 
 function resolveExactItems() {
@@ -4515,5 +4594,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=270").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=272").catch(() => {});
 }
