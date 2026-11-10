@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=272"),
-      fetch("data/treasures.json?v=272")
+      fetch("data/auction.json?v=273"),
+      fetch("data/treasures.json?v=273")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -2727,7 +2727,7 @@ function setTreasureMax() {
 
 function renderGroup(container, fieldset, kind, entries) {
   container.replaceChildren();
-  const visible = entries.filter((entry) => entry.count > 0 || Number.isInteger(entry.max));
+  const visible = entries.filter((entry) => entry.count > 0 || (Number.isInteger(entry.max) && entry.max > 0));
   fieldset.hidden = visible.length === 0;
   visible.forEach((entry) => {
     const button = document.createElement("button");
@@ -2949,6 +2949,7 @@ function renderDetail() {
   const unknown = isUnknownSelection(state.selected);
   const max = unknown ? null : categoryMax(state.selected);
   const unknownOpen = unknown && unknownCount(state.board, state.selected.kind) > 0;
+  if (state.selected && !unknown && !items.length && max === 0) state.selected = null;
   if (!state.selected || (!items.length && max == null && !unknownOpen)) {
     box.hidden = true;
     $("#detail-list").replaceChildren();
@@ -4594,5 +4595,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=272").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=273").catch(() => {});
 }
