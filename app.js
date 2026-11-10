@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=253"),
-      fetch("data/treasures.json?v=253")
+      fetch("data/auction.json?v=257"),
+      fetch("data/treasures.json?v=257")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1883,8 +1883,10 @@ function additionPastMax(specs) {
     }
   }
   const lower = ["gray", "green", "blue", "purple"];
-  if (Number.isInteger(state.board.treasureTotal) && lower.every((id) => Number.isInteger(maxes.rarities[id]))) {
-    const allowance = state.board.treasureTotal - lower.reduce((sum, id) => sum + maxes.rarities[id], 0);
+  const total = state.board.treasureTotal;
+  const addingGoldOrRed = added.rarities.gold || added.rarities.red;
+  if (addingGoldOrRed && Number.isInteger(total) && total > 0 && lower.every((id) => Number.isInteger(maxes.rarities[id]))) {
+    const allowance = total - lower.reduce((sum, id) => sum + maxes.rarities[id], 0);
     const projected = (counts.rarities.gold || 0) + (counts.rarities.red || 0);
     if (projected > allowance) {
       const id = added.rarities.red && !added.rarities.gold ? "red" : "gold";
@@ -2130,12 +2132,21 @@ function assignToDonor(item, field, id) {
 function decreaseChild(facts, field, id) {
   const specific = Object.assign({}, facts);
   writeDetailFact(specific, field, id);
+  const clearField = fieldToClear(facts, field);
   const match = state.board.items
-    .filter((item) => itemMatches(item, specific) && !exactTreasure(item) && (field !== "sizes" || item.type !== "collection"))
+    .filter((item) => itemMatches(item, specific) && !exactTreasure(item) && (clearField !== "sizes" || item.type !== "collection"))
     .sort((left, right) => detailSpecificity(left) - detailSpecificity(right))[0];
   if (!match) return false;
-  writeDetailFact(match, field, "unknown");
+  const wasCollection = clearField === "types" && match.type === "collection";
+  writeDetailFact(match, clearField, "unknown");
+  if (wasCollection && sizeKey(match.size) === collectionShape()) match.size = null;
   return true;
+}
+
+function fieldToClear(facts, field) {
+  const opened = state.selected && state.selected.kind;
+  if (opened && opened !== field && factSpecified(facts, opened)) return opened;
+  return field;
 }
 
 function childUnset(item, field) {
@@ -2492,7 +2503,7 @@ function knownRarityCount(board, id) {
 }
 
 function goldRedAllowance(board) {
-  if (!board || !Number.isInteger(board.treasureTotal)) return null;
+  if (!board || !Number.isInteger(board.treasureTotal) || board.treasureTotal <= 0) return null;
   const maxes = board.maxCounts?.rarities || {};
   const lower = ["gray", "green", "blue", "purple"];
   if (!lower.every((id) => Number.isInteger(maxes[id]))) return null;
@@ -2660,7 +2671,8 @@ function canDecrease(facts, field, id) {
   if (id === "unknown") return false;
   const specific = Object.assign({}, facts);
   writeDetailFact(specific, field, id);
-  return state.board.items.some((item) => itemMatches(item, specific) && !exactTreasure(item) && (field !== "sizes" || item.type !== "collection"));
+  const clearField = fieldToClear(facts, field);
+  return state.board.items.some((item) => itemMatches(item, specific) && !exactTreasure(item) && (clearField !== "sizes" || item.type !== "collection"));
 }
 
 function canAssign(facts, field, id) {
@@ -4426,5 +4438,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=253").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=257").catch(() => {});
 }
