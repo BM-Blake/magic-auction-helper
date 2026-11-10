@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=273"),
-      fetch("data/treasures.json?v=273")
+      fetch("data/auction.json?v=276"),
+      fetch("data/treasures.json?v=276")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1381,7 +1381,7 @@ function choiceField(legendText, kind, extraClass, group, options, ariaLabel) {
     const button = choiceChip(kind, option.id, option.label, option.color, option.ink);
     const selected = group[kind] === option.id;
     button.setAttribute("aria-pressed", selected ? "true" : "false");
-    button.disabled = !selected && !catalogSupports(choiceFacts(group, kind, option.id));
+    button.disabled = !selected && !catalogSupports(choiceFacts(group, kind, option.id), null, true);
     chips.appendChild(button);
   });
   fieldset.append(legend, chips);
@@ -1719,7 +1719,8 @@ function syncGroupChips(entry, group) {
   entry.querySelectorAll("[data-pick]").forEach((button) => {
     const selected = group[button.dataset.pick] === button.dataset.id;
     button.setAttribute("aria-pressed", selected ? "true" : "false");
-    button.disabled = !selected && !catalogSupports(choiceFacts(group, button.dataset.pick, button.dataset.id));
+    const replacing = group.use === "max" || group.use === "both";
+    button.disabled = !selected && !catalogSupports(choiceFacts(group, button.dataset.pick, button.dataset.id), null, replacing);
   });
   syncCategoryPanels(entry, group);
 }
@@ -1846,7 +1847,7 @@ function onAdd(event) {
 
   const over = additionPastMax(parsed);
   if (over) {
-    showError(`${over.label} would be ${over.count}/${over.max}.`);
+    showError(over.message || `${over.label} would be ${over.count}/${over.max}.`);
     return;
   }
 
@@ -1856,7 +1857,8 @@ function onAdd(event) {
     return;
   }
   const maxSpecs = parsed.filter((spec) => (spec.use === "max" || spec.use === "both") && categoryPicks(spec).length > 0);
-  const itemSpecs = parsed.filter((spec) => spec.use !== "max");
+  const itemSpecs = parsed.filter((spec) => spec.use === "known");
+  maxSpecs.forEach((spec) => applyCountTarget(spec));
   itemSpecs.forEach((spec) => {
     for (let index = 0; index < spec.count; index += 1) {
       const detail = spec.details && index < spec.details.length ? spec.details[index] : null;
@@ -1882,12 +1884,103 @@ function onAdd(event) {
 function applyMaxes(specs) {
   specs.forEach((spec) => {
     categoryPicks(spec).forEach((picked) => {
-      const current = state.board.maxCounts[picked.kind][picked.id];
-      state.board.maxCounts[picked.kind][picked.id] = spec.count === 0
-        ? 0
-        : Number.isInteger(current) ? current + spec.count : spec.count;
+      state.board.maxCounts[picked.kind][picked.id] = spec.count;
     });
   });
+}
+
+function applyCountTarget(spec) {
+  const picks = categoryPicks(spec);
+  if (!picks.length) return null;
+  const add = spec.use === "both" ? bothAddCount(spec) : 0;
+  for (const pick of picks) {
+    if (spec.count >= protectedAfterAdd(pick, spec, add)) continue;
+    const label = pickLabel(pick);
+    return { message: `Lowering ${label} to ${spec.count} would remove a treasure that already has another property.` };
+  }
+  if (add > 0) {
+    for (let index = 0; index < add; index += 1) {
+      const detailIndex = spec.count - add + index;
+      const detail = spec.details && detailIndex < spec.details.length ? spec.details[detailIndex] : null;
+      state.board.items.push(blankItem(itemFact(spec, detail, detailIndex)));
+    }
+  }
+  picks.forEach((pick) => removePlainItems(pick, spec.count));
+  return null;
+}
+
+function bothAddCount(spec) {
+  let add = 0;
+  categoryPicks(spec).forEach((pick) => {
+    const deficit = spec.count - itemsForPick(pick).length;
+    if (deficit > add) add = deficit;
+  });
+  return add;
+}
+
+function protectedAfterAdd(pick, spec, add) {
+  const kept = itemsForPick(pick).filter((item) => itemHasOtherProperty(item, pick.kind)).length;
+  if (add > 0 && addedItemHasOtherProperty(spec, pick, add)) return kept + add;
+  return kept;
+}
+
+function addedItemHasOtherProperty(spec, pick, add) {
+  if (categoryPicks(spec).some((other) => other.kind !== pick.kind)) return true;
+  for (let index = 0; index < add; index += 1) {
+    const detailIndex = spec.count - add + index;
+    const detail = spec.details && detailIndex < spec.details.length ? spec.details[detailIndex] : null;
+    const fact = itemFact(spec, detail, detailIndex);
+    if (itemHasOtherProperty({
+      rarity: fact.rarity || "",
+      type: fact.type || "",
+      size: fact.size == null ? null : fact.size,
+      price: fact.price == null ? null : fact.price
+    }, pick.kind)) return true;
+  }
+  return false;
+}
+
+function removePlainItems(pick, next) {
+  let extra = itemsForPick(pick).length - next;
+  if (extra <= 0) return;
+  for (let index = state.board.items.length - 1; index >= 0 && extra > 0; index -= 1) {
+    const item = state.board.items[index];
+    if (!itemHasPick(item, pick) || itemHasOtherProperty(item, pick.kind)) continue;
+    state.board.items.splice(index, 1);
+    extra -= 1;
+  }
+}
+
+function itemsForPick(pick) {
+  return state.board.items.filter((item) => itemHasPick(item, pick));
+}
+
+function itemHasPick(item, pick) {
+  const value = itemCategoryValue(item, pick.kind);
+  const id = pick.kind === "sizes" ? sizeKey(pick.id) : String(pick.id);
+  return value !== "" && value === id;
+}
+
+function itemCategoryValue(item, kind) {
+  if (kind === "rarities") return item.rarity && item.rarity !== "unknown" ? item.rarity : "";
+  if (kind === "types") return item.type && item.type !== "unknown" ? item.type : "";
+  if (item.size == null || item.size === "") return "";
+  return sizeKey(item.size);
+}
+
+function itemHasOtherProperty(item, kind) {
+  if (kind !== "rarities" && item.rarity && item.rarity !== "unknown") return true;
+  if (kind !== "types" && item.type && item.type !== "unknown") return true;
+  if (kind !== "sizes" && item.size != null && item.size !== "") return true;
+  if (item.price != null && item.price !== "") return true;
+  if (item.catalogName) return true;
+  return false;
+}
+
+function pickLabel(pick) {
+  if (pick.kind === "rarities") return rarityName(pick.id);
+  if (pick.kind === "types") return typeName(pick.id);
+  return sizeLabel(pick.id);
 }
 
 function revealUnknownForMax(rarity, count) {
@@ -1949,65 +2042,67 @@ function fillWouldExceed(item, treasure) {
 }
 
 function additionPastMax(specs) {
-  const counts = tally(state.board.items, state.data);
-  const maxes = {
-    rarities: Object.assign({}, state.board.maxCounts.rarities),
-    types: Object.assign({}, state.board.maxCounts.types),
-    sizes: Object.assign({}, state.board.maxCounts.sizes)
+  const snapshot = {
+    items: state.board.items,
+    maxCounts: state.board.maxCounts
   };
-  const added = { rarities: {}, types: {}, sizes: {} };
-  specs.forEach((spec) => {
-    const picks = categoryPicks(spec);
-    if (spec.use === "max" || spec.use === "both") {
-      picks.forEach((picked) => {
-        if (spec.count === 0) {
-          maxes[picked.kind][picked.id] = 0;
-          return;
-        }
-        const current = maxes[picked.kind][picked.id];
-        maxes[picked.kind][picked.id] = Number.isInteger(current) ? current + spec.count : spec.count;
+  state.board.items = snapshot.items.map((item) => Object.assign({}, item));
+  state.board.maxCounts = {
+    rarities: Object.assign({}, snapshot.maxCounts.rarities),
+    types: Object.assign({}, snapshot.maxCounts.types),
+    sizes: Object.assign({}, snapshot.maxCounts.sizes)
+  };
+  const touched = { rarities: {}, types: {}, sizes: {} };
+  try {
+    for (const spec of specs) {
+      if ((spec.use !== "max" && spec.use !== "both") || !categoryPicks(spec).length) continue;
+      const blocked = applyCountTarget(spec);
+      if (blocked) return blocked;
+      categoryPicks(spec).forEach((picked) => {
+        state.board.maxCounts[picked.kind][picked.id] = spec.count;
+        touched[picked.kind][picked.id] = true;
       });
     }
-    if (spec.use === "max" || spec.count === 0) return;
-    const listed = spec.details || [];
-    for (let index = 0; index < spec.count; index += 1) {
-      const detail = index < listed.length ? listed[index] : null;
-      const fact = itemFact(spec, detail, index);
-      if (fact.rarity) noteAdded(counts, added, "rarities", fact.rarity);
-      if (fact.type) noteAdded(counts, added, "types", fact.type);
-      if (fact.size != null && fact.size !== "") noteAdded(counts, added, "sizes", String(fact.size));
-    }
-  });
-  for (const kind of ["rarities", "types", "sizes"]) {
-    for (const id of Object.keys(maxes[kind])) {
-      if (maxes[kind][id] !== 0) continue;
-      const count = counts[kind][id] || 0;
-      if (count > 0) {
-        const label = kind === "rarities" ? rarityName(id) : kind === "types" ? typeName(id) : sizeLabel(id);
-        return { label, count, max: 0 };
+    for (const spec of specs) {
+      if (spec.use === "max" || spec.use === "both" || spec.count === 0) continue;
+      const listed = spec.details || [];
+      for (let index = 0; index < spec.count; index += 1) {
+        const detail = index < listed.length ? listed[index] : null;
+        const fact = itemFact(spec, detail, index);
+        state.board.items.push(blankItem(fact));
+        if (fact.rarity) touched.rarities[fact.rarity] = true;
+        if (fact.type) touched.types[fact.type] = true;
+        if (fact.size != null && fact.size !== "") touched.sizes[String(fact.size)] = true;
       }
     }
-    for (const id of Object.keys(added[kind])) {
-      const max = maxes[kind][id];
-      const count = counts[kind][id] || 0;
-      if (Number.isInteger(max) && count > max) {
-        const label = kind === "rarities" ? rarityName(id) : kind === "types" ? typeName(id) : sizeLabel(id);
-        return { label, count, max };
+    const counts = tally(state.board.items, state.data);
+    const maxes = state.board.maxCounts;
+    for (const kind of ["rarities", "types", "sizes"]) {
+      for (const id of Object.keys(touched[kind])) {
+        const max = maxes[kind][id];
+        const count = counts[kind][id] || 0;
+        if (Number.isInteger(max) && count > max) {
+          const label = kind === "rarities" ? rarityName(id) : kind === "types" ? typeName(id) : sizeLabel(id);
+          return { label, count, max };
+        }
       }
     }
-  }
-  const lower = ["gray", "green", "blue", "purple"];
-  const total = state.board.treasureTotal;
-  const addingGoldOrRed = added.rarities.gold || added.rarities.red;
-  if (addingGoldOrRed && Number.isInteger(total) && total > 0 && lower.every((id) => Number.isInteger(maxes.rarities[id]))) {
-    const allowance = total - lower.reduce((sum, id) => sum + maxes.rarities[id], 0);
-    const projected = (counts.rarities.gold || 0) + (counts.rarities.red || 0);
-    if (projected > allowance) {
-      const id = added.rarities.red && !added.rarities.gold ? "red" : "gold";
-      return { label: rarityName(id), count: projected, max: Math.max(0, allowance) };
+    const lower = ["gray", "green", "blue", "purple"];
+    const total = state.board.treasureTotal;
+    const addingGoldOrRed = touched.rarities.gold || touched.rarities.red;
+    if (addingGoldOrRed && Number.isInteger(total) && total > 0 && lower.every((id) => Number.isInteger(maxes.rarities[id]))) {
+      const allowance = total - lower.reduce((sum, id) => sum + maxes.rarities[id], 0);
+      const projected = (counts.rarities.gold || 0) + (counts.rarities.red || 0);
+      if (projected > allowance) {
+        const id = touched.rarities.red && !touched.rarities.gold ? "red" : "gold";
+        return { label: rarityName(id), count: projected, max: Math.max(0, allowance) };
+      }
     }
+    return null;
+  } finally {
+    state.board.items = snapshot.items;
+    state.board.maxCounts = snapshot.maxCounts;
   }
-  return null;
 }
 
 function hasBoardInfo() {
@@ -2016,11 +2111,6 @@ function hasBoardInfo() {
   const maxes = state.board.maxCounts;
   if (!maxes) return false;
   return ["rarities", "types", "sizes"].some((kind) => Object.keys(maxes[kind] || {}).length > 0);
-}
-
-function noteAdded(counts, added, kind, id) {
-  counts[kind][id] = (counts[kind][id] || 0) + 1;
-  added[kind][id] = true;
 }
 
 function itemFact(spec, detail, index) {
@@ -3005,7 +3095,7 @@ function renderDetail() {
     pairRow = null;
     openChoices = null;
   };
-  const showFactFilters = unknown || items.length > 5;
+  const showFactFilters = unknown || items.length > 1;
   if (!showFactFilters && state.detailOpen && state.detailOpen !== "items") state.detailOpen = null;
   if (showFactFilters) levels.forEach((field) => {
     const choiceGroups = asksForChoice(field) ? groupedDonors(parent, state.selected.kind, field) : null;
@@ -4397,21 +4487,22 @@ function heldFacts(item, changing) {
   };
 }
 
-function catalogSupports(facts, held) {
+function catalogSupports(facts, held, ignoreLimits) {
   const treasures = state.data && state.data.treasures;
   if (!Array.isArray(treasures) || !treasures.length) return true;
   const keep = held || {};
-  if (facts.rarity && !keep.rarity && atCategoryMax("rarities", facts.rarity)) return false;
-  if (facts.type && !keep.type && typeAtMax(facts.type)) return false;
-  if (facts.size != null && facts.size !== "" && !keep.size && atCategoryMax("sizes", facts.size)) return false;
+  const limited = !ignoreLimits;
+  if (limited && facts.rarity && !keep.rarity && atCategoryMax("rarities", facts.rarity)) return false;
+  if (limited && facts.type && !keep.type && typeAtMax(facts.type)) return false;
+  if (limited && facts.size != null && facts.size !== "" && !keep.size && atCategoryMax("sizes", facts.size)) return false;
   return treasures.some((treasure) => {
     if (facts.rarity && treasure.rarity !== facts.rarity) return false;
     if (facts.type && !typeMatches(treasure.type, facts.type)) return false;
     if (facts.size != null && !treasureMatchesSize(treasure, facts.size)) return false;
-    if (!facts.rarity && atCategoryMax("rarities", treasure.rarity)) return false;
-    if (!facts.type && typeAtMax(treasure.type)) return false;
+    if (limited && !facts.rarity && atCategoryMax("rarities", treasure.rarity)) return false;
+    if (limited && !facts.type && typeAtMax(treasure.type)) return false;
     const shape = treasureShape(treasure) || (treasure.size == null ? "" : sizeKey(treasure.size));
-    if ((facts.size == null || facts.size === "") && shape && atCategoryMax("sizes", shape)) return false;
+    if (limited && (facts.size == null || facts.size === "") && shape && atCategoryMax("sizes", shape)) return false;
     return true;
   });
 }
@@ -4595,5 +4686,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=273").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=276").catch(() => {});
 }
