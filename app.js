@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=261"),
-      fetch("data/treasures.json?v=261")
+      fetch("data/auction.json?v=262"),
+      fetch("data/treasures.json?v=262")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -1780,7 +1780,7 @@ function revealUnknownForMax(rarity, count) {
   const known = board.items.filter((item) => item.rarity === rarity).length;
   const unrated = board.items.filter((item) => !item.rarity).length;
   let make = Math.max(0, count - known - unrated);
-  if (board.treasureTotal != null) make = Math.min(make, Math.max(0, board.treasureTotal - board.items.length));
+  if (Number.isInteger(board.treasureTotal) && board.treasureTotal > 0) make = Math.min(make, Math.max(0, board.treasureTotal - board.items.length));
   for (let index = 0; index < make; index += 1) board.items.push(blankItem({}));
 }
 
@@ -1897,7 +1897,7 @@ function additionPastMax(specs) {
 
 function hasBoardInfo() {
   if (!state.board) return false;
-  if (state.board.items.length || state.board.treasureTotal != null) return true;
+  if (state.board.items.length || (Number.isInteger(state.board.treasureTotal) && state.board.treasureTotal > 0)) return true;
   const maxes = state.board.maxCounts;
   if (!maxes) return false;
   return ["rarities", "types", "sizes"].some((kind) => Object.keys(maxes[kind] || {}).length > 0);
@@ -2098,7 +2098,7 @@ function increaseChild(facts, field, id) {
 
 function replacingUnderMax(facts, field, id) {
   const total = state.board && state.board.treasureTotal;
-  if (Number.isInteger(total) || !Number.isInteger(storedCategoryMax(field, id))) return false;
+  if ((Number.isInteger(total) && total > 0) || !Number.isInteger(storedCategoryMax(field, id))) return false;
   if (blockedByMaxedCategory(facts)) return false;
   return ["rarities", "types", "sizes"].every((kind) => kind === field || !factSpecified(facts, kind));
 }
@@ -2468,7 +2468,7 @@ function resolveUnknown() {
   const listedUnknown = board.items.filter((item) => item.rarity === "unknown").length;
   const unknownMax = board.maxCounts.rarities.unknown;
   let remaining = null;
-  if (board.treasureTotal != null) remaining = board.treasureTotal - knownSum;
+  if (Number.isInteger(board.treasureTotal) && board.treasureTotal > 0) remaining = board.treasureTotal - knownSum;
   else if (Number.isInteger(unknownMax)) remaining = unknownMax;
   if (remaining == null || remaining < 0 || listedUnknown > remaining) return false;
   let changed = false;
@@ -2559,14 +2559,14 @@ function renderRarityLegend(counts) {
     return sum + (Number.isInteger(maxes[id]) ? Math.max(count, maxes[id]) : count);
   }, 0);
   const total = state.board.treasureTotal;
-  knownNode.textContent = Number.isInteger(total) ? `${known}/${total}` : String(known);
-  knownNode.setAttribute("aria-label", Number.isInteger(total)
+  knownNode.textContent = Number.isInteger(total) && total > 0 ? `${known}/${total}` : String(known);
+  knownNode.setAttribute("aria-label", Number.isInteger(total) && total > 0
     ? `${known} of ${total} treasures have a known rarity count`
     : `${known} treasures have a known rarity count`);
   const lower = ["gray", "green", "blue"];
   const purpleKnown = Number.isInteger(maxes.purple);
   const capped = (purpleKnown ? lower.concat("purple") : lower).every((id) => Number.isInteger(maxes[id]));
-  const room = capped && Number.isInteger(total)
+  const room = capped && Number.isInteger(total) && total > 0
     ? total - (purpleKnown ? lower.concat("purple") : lower).reduce((sum, id) => sum + maxes[id], 0)
     : null;
   if (room == null || room <= 0) {
@@ -2590,7 +2590,7 @@ function renderTreasureTotal() {
   if (!total) return;
   const recorded = state.board ? state.board.items.length : 0;
   const cap = state.board ? state.board.treasureTotal : null;
-  total.textContent = Number.isInteger(cap) ? `${recorded}/${cap}` : String(recorded);
+  total.textContent = Number.isInteger(cap) && cap > 0 ? `${recorded}/${cap}` : String(recorded);
 }
 
 function renderGroup(container, fieldset, kind, entries) {
@@ -4370,7 +4370,7 @@ function loadBoard() {
       house: typeof saved.house === "string" ? saved.house : blank.house,
       hero: typeof saved.hero === "string" ? saved.hero : blank.hero,
       items,
-      treasureTotal: Number.isInteger(total) && total >= 0 ? total : null,
+      treasureTotal: Number.isInteger(total) && total > 0 ? total : null,
       maxCounts: normalizeMaxCounts(saved.maxCounts)
     };
   } catch (error) {
@@ -4436,5 +4436,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=261").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=262").catch(() => {});
 }
