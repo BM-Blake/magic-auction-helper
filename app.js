@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=269"),
-      fetch("data/treasures.json?v=269")
+      fetch("data/auction.json?v=270"),
+      fetch("data/treasures.json?v=270")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -906,8 +906,15 @@ function specifyStepButton(kind, option, delta, disabled, scopeKey) {
   return button;
 }
 
-function specifyCountChip(kind, option, count) {
-  const chip = document.createElement("span");
+function specifyCountChip(kind, option, count, fillScope) {
+  const chip = document.createElement(fillScope ? "button" : "span");
+  if (fillScope) {
+    chip.type = "button";
+    chip.dataset.specifyFill = "1";
+    chip.dataset.specifyKind = kind;
+    chip.dataset.specifyId = option.id;
+    chip.dataset.specifyScope = fillScope;
+  }
   chip.className = count > 0 ? "chip is-on" : "chip";
   if (option.color) {
     chip.classList.add("is-swatch");
@@ -1018,6 +1025,35 @@ function addSpecify(group, kind, id, scope) {
     index = group.details.length - 1;
   }
   writeSpecify(group.details[index], kind, id);
+  rerenderGroups();
+  hideError();
+}
+
+function fillSpecify(group, kind, id, scope) {
+  const count = parseCount(group.count);
+  if (count == null) {
+    showError("Enter a whole number of at least 1 for each group.");
+    return;
+  }
+  if (!group.details) group.details = [];
+  const scoped = scope && scope !== "all";
+  let changed = false;
+  group.details.forEach((detail) => {
+    if (detail[kind]) return;
+    if (scoped && !detailInScope(detail, kind, scope)) return;
+    if (specifyAtMax(group, kind, id) || !specifyFits(group, detail, kind, id)) return;
+    writeSpecify(detail, kind, id);
+    changed = true;
+  });
+  if (!scoped) {
+    while (group.details.length < count && !specifyAtMax(group, kind, id) && specifyFits(group, emptyDetail(), kind, id)) {
+      const detail = emptyDetail();
+      group.details.push(detail);
+      writeSpecify(detail, kind, id);
+      changed = true;
+    }
+  }
+  if (!changed) return;
   rerenderGroups();
   hideError();
 }
@@ -1150,7 +1186,7 @@ function choiceStepperField(legendText, kind, extraClass, group, options, ariaLa
     const wrap = document.createElement("div");
     wrap.className = "chip-wrap";
     wrap.append(
-      specifyCountChip(kind, option, count),
+      specifyCountChip(kind, option, count, scope ? scopeKey : "all"),
       spinColumn(
         specifyStepButton(kind, option, "1", !canAdd, scopeKey),
         specifyStepButton(kind, option, "-1", count === 0, scopeKey)
@@ -1466,6 +1502,17 @@ function onSheetClick(event) {
     const group = entry && state.groups[Number(entry.dataset.group)];
     if (!group) return;
     openSpecify(group, specifyEdit.dataset.specifyEdit, Number(specifyEdit.dataset.detail));
+    return;
+  }
+
+  const fill = event.target.closest("[data-specify-fill]");
+  if (fill) {
+    captureInputs();
+    const entry = fill.closest("[data-group]");
+    const group = entry && state.groups[Number(entry.dataset.group)];
+    if (!group) return;
+    const scope = fill.dataset.specifyScope === "all" ? "all" : readScope(fill.dataset.specifyScope);
+    fillSpecify(group, fill.dataset.specifyKind, fill.dataset.specifyId, scope);
     return;
   }
 
@@ -4468,5 +4515,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=269").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=270").catch(() => {});
 }

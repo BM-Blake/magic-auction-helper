@@ -965,9 +965,11 @@ legend {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  font: inherit;
+  color: inherit;
 }
 
-.counter { display: flex; align-items: center; gap: 4px; }
+button.chip { cursor: pointer; }
 
 #rarities > .chip,
 .add-rarities .chip {
