@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=280"),
-      fetch("data/treasures.json?v=280")
+      fetch("data/auction.json?v=281"),
+      fetch("data/treasures.json?v=281")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -82,6 +82,9 @@ function bindStaticEvents() {
   $("#crypto-open").addEventListener("click", openCrypto);
   $("#close-crypto").addEventListener("click", closeCrypto);
   $("#crypto-dialog").addEventListener("click", onCryptoClick);
+  $("#end-dialog").addEventListener("click", onEndClick);
+  $("#end-form").addEventListener("submit", onEndSubmit);
+  $("#close-end").addEventListener("click", closeEndDialog);
   $("#fab").addEventListener("click", () => setSheet($("#sheet").hidden));
   $("#close-sheet").addEventListener("click", () => setSheet(false));
   $("#sheet").addEventListener("submit", onAdd);
@@ -2413,11 +2416,10 @@ function matchWorthRecording() {
   return state.board.items.length > 0 || (Number.isInteger(total) && total > 0);
 }
 
-function recordMatch() {
+function recordMatch(result) {
   if (!matchWorthRecording()) return;
   const board = state.board;
-  const worthMin = catalogWorth(board, state.data, false);
-  const worthMax = Math.max(worthMin, catalogWorth(board, state.data, true));
+  const { min: worthMin, max: worthMax } = estimateRange(board, state.data);
   const total = board.treasureTotal;
   const match = {
     id: createId(),
@@ -2430,6 +2432,11 @@ function recordMatch() {
     worthMax,
     bids: recommendationBids(board, state.data),
     band: houseItemBand(board),
+    result: {
+      value: result && result.value != null ? result.value : null,
+      winningBid: result && result.winningBid != null ? result.winningBid : null,
+      won: result && typeof result.won === "boolean" ? result.won : null
+    },
     maxCounts: {
       rarities: Object.assign({}, board.maxCounts && board.maxCounts.rarities),
       types: Object.assign({}, board.maxCounts && board.maxCounts.types),
@@ -2511,7 +2518,9 @@ function matchCard(match) {
   const title = document.createElement("span");
   title.className = "match-title";
   const total = Number.isInteger(match.treasureTotal) ? `${match.treasureTotal} treasures` : "Total unknown";
-  title.textContent = `${matchHouseName(match.house)} · ${total}`;
+  const won = match.result ? match.result.won : null;
+  const outcome = won === true ? " · Won" : won === false ? " · Lost" : "";
+  title.textContent = `${matchHouseName(match.house)} · ${total}${outcome}`;
   const meta = document.createElement("span");
   meta.className = "match-meta";
   const bids = match.bids || {};
@@ -2531,9 +2540,27 @@ function matchDetail(match) {
   const worthText = max === 0 ? "0" : min === max ? formatCoins(min) : `${formatCoins(min)} – ${formatCoins(max)}`;
   worth.textContent = `Estimate worth ${worthText}. Revealed ${match.itemCount || 0}.`;
   detail.appendChild(worth);
+  const result = match.result || {};
+  const value = Number.isFinite(result.value) ? result.value : null;
+  const outcome = matchOutcome(result, value);
+  if (outcome) {
+    const line = document.createElement("p");
+    line.textContent = outcome;
+    detail.appendChild(line);
+  }
   const bids = match.bids || {};
+  const priced = (label, price) => {
+    const amount = price || 0;
+    if (value == null) return `${label} ${formatCoins(amount)}.`;
+    const gain = value - amount;
+    return `${label} ${formatCoins(amount)} (${gain < 0 ? "loss" : "profit"} ${formatCoins(Math.abs(gain))}).`;
+  };
   const prices = document.createElement("p");
-  prices.textContent = `Safe bet ${formatCoins(bids.profit || 0)}. Calculated risk ${formatCoins(bids.risk || 0)}. Never more than ${formatCoins(bids.cap || 0)}.`;
+  prices.textContent = [
+    priced("Safe bet", bids.profit),
+    priced("Calculated risk", bids.risk),
+    priced("Never more than", bids.cap)
+  ].join(" ");
   detail.appendChild(prices);
   const items = Array.isArray(match.items) ? match.items : [];
   if (items.length) {
@@ -2561,15 +2588,79 @@ function matchDetail(match) {
   return detail;
 }
 
+function matchOutcome(result, value) {
+  const bid = Number.isFinite(result.winningBid) ? result.winningBid : null;
+  const gain = value != null && bid != null ? value - bid : null;
+  const parts = [];
+  if (value != null) parts.push(`Pool value ${formatCoins(value)}.`);
+  if (bid != null) parts.push(`Winning bid ${formatCoins(bid)}.`);
+  if (result.won === true) {
+    parts.push(gain == null ? "You won." : `You won with a ${gain < 0 ? "loss" : "profit"} of ${formatCoins(Math.abs(gain))}.`);
+  } else if (result.won === false) {
+    parts.push(gain != null && gain < 0 ? `You lost, and the winner paid ${formatCoins(-gain)} over the value.` : "You lost.");
+  }
+  return parts.join(" ");
+}
+
 function endGame() {
   if (!state.board) return;
-  if (hasBoardInfo()) {
-    const message = matchWorthRecording()
-      ? "End this game? This round is saved to match history and the board is cleared."
-      : "End this game and clear the revealed information?";
-    if (!window.confirm(message)) return;
+  if (matchWorthRecording()) {
+    openEndDialog();
+    return;
   }
-  recordMatch();
+  if (hasBoardInfo() && !window.confirm("End this game and clear the revealed information?")) return;
+  finishGame(null);
+}
+
+function openEndDialog() {
+  const dialog = $("#end-dialog");
+  $("#end-value").value = "";
+  $("#end-bid").value = "";
+  setEndWon(null);
+  $("#end-error").hidden = true;
+  if (!dialog.open) dialog.showModal();
+}
+
+function closeEndDialog() {
+  const dialog = $("#end-dialog");
+  if (dialog && dialog.open) dialog.close();
+}
+
+function setEndWon(choice) {
+  document.querySelectorAll("#end-dialog [data-won]").forEach((button) => {
+    button.setAttribute("aria-pressed", button.dataset.won === choice ? "true" : "false");
+  });
+}
+
+function onEndClick(event) {
+  if (event.target === event.currentTarget) {
+    closeEndDialog();
+    return;
+  }
+  const choice = event.target.closest("[data-won]");
+  if (!choice) return;
+  setEndWon(choice.getAttribute("aria-pressed") === "true" ? null : choice.dataset.won);
+}
+
+function onEndSubmit(event) {
+  event.preventDefault();
+  const value = parseCoins($("#end-value").value);
+  const winningBid = parseCoins($("#end-bid").value);
+  const error = $("#end-error");
+  if (Number.isNaN(value) || Number.isNaN(winningBid)) {
+    error.textContent = Number.isNaN(value)
+      ? "Enter the pool value like 450k or 1.2m."
+      : "Enter the winning bid like 300k or 1.2m.";
+    error.hidden = false;
+    return;
+  }
+  const pressed = $("#end-dialog [data-won][aria-pressed='true']");
+  closeEndDialog();
+  finishGame({ value, winningBid, won: pressed ? pressed.dataset.won === "yes" : null });
+}
+
+function finishGame(result) {
+  recordMatch(result);
   state.board.items = [];
   state.board.treasureTotal = null;
   state.board.treasureTotalLocked = false;
@@ -3886,8 +3977,7 @@ function stepper(count, field, id, childField, childId, canIncrease, canLower) {
 }
 
 function renderEstimate() {
-  const min = catalogWorth(state.board, state.data, false);
-  const max = Math.max(min, catalogWorth(state.board, state.data, true));
+  const { min, max } = estimateRange(state.board, state.data);
   $("#worth-range").textContent = max === 0
     ? "0"
     : min === max
@@ -3899,12 +3989,60 @@ function renderEstimate() {
   $("#bid-cap").textContent = formatCoins(bids.cap);
 }
 
+function estimateRange(board, data) {
+  const min = catalogWorth(board, data, false);
+  const top = Math.min(catalogWorth(board, data, true), housePoolCeiling(data, board.house));
+  return { min, max: Math.max(min, top) };
+}
+
 function recommendationBids(board, data) {
   if (!boardHasBidInput(board)) return { profit: 0, risk: 0, cap: 0 };
   const band = houseItemBand(board);
   const total = band ? band.low : undefined;
-  const bid = (mode) => bidFromWorth(recommendationWorth(board, data, total, mode));
-  return { profit: bid("safe"), risk: bid("risk"), cap: bid("cap") };
+  const ceiling = housePoolCeiling(data, board.house);
+  const bid = (mode) => bidFromWorth(Math.min(recommendationWorth(board, data, total, mode), ceiling));
+  const profit = cheapestPoolWorth(board, data);
+  const cap = Math.max(bid("cap"), profit);
+  return { profit, risk: Math.min(Math.max(bid("risk"), profit), cap), cap };
+}
+
+function cheapestPoolWorth(board, data) {
+  const treasures = (data && data.treasures) || [];
+  if (!board || !treasures.length) return 0;
+  const items = catalogByPrice(treasures, false);
+  const rooms = openRooms(board, data);
+  const used = new Set();
+  const parts = { known: 0, unknown: 0 };
+  const listed = listedSlots(board);
+  fillSlots(listed, items, used, rooms, parts);
+  const owed = owedColorSlots(rooms);
+  const total = board.treasureTotal;
+  const band = houseItemBand(board);
+  const count = Number.isInteger(total) && total > 0
+    ? total
+    : Math.max(band ? band.low : 0, listed.length + owed.length);
+  const open = Math.max(0, count - listed.length);
+  const missing = owed.slice(0, open);
+  while (missing.length < open) missing.push({ rarity: null, type: null, size: null, unlisted: true });
+  fillSlots(missing, items, used, rooms, parts);
+  return parts.known + parts.unknown;
+}
+
+function owedColorSlots(rooms) {
+  const slots = [];
+  if (!rooms || !rooms.rarities) return slots;
+  Object.keys(rooms.rarities).forEach((id) => {
+    const room = rooms.rarities[id];
+    if (!Number.isFinite(room) || room <= 0) return;
+    for (let index = 0; index < room; index += 1) slots.push({ rarity: id, type: null, size: null, unlisted: true });
+    rooms.rarities[id] = 0;
+  });
+  return slots;
+}
+
+function housePoolCeiling(data, houseId) {
+  const house = ((data && data.houses) || []).find((entry) => entry.id === houseId);
+  return house && Number.isFinite(house.maxPrice) ? house.maxPrice : Infinity;
 }
 
 function boardHasBidInput(board) {
@@ -3942,7 +4080,6 @@ function bidFromWorth(worth) {
 
 function recommendationWorth(board, data, total, mode) {
   if (!board || !data) return 0;
-  const level = mode || "safe";
   const sized = Number.isInteger(total) ? Object.assign({}, board, { treasureTotal: total }) : board;
   const rooms = openRooms(sized, data);
   const catalog = (data.treasures || []).map((item, index) => ({ ...item, index, price: Number(item.price) }))
@@ -3961,20 +4098,14 @@ function recommendationWorth(board, data, total, mode) {
       return;
     }
     const slot = recommendationSlot(item);
-    worth += lowestPartialPrice(catalog, slot, sized, data, level);
+    worth += lowestPartialPrice(catalog, slot, sized, data, mode);
   });
   const goldRedLeft = goldRedRoom(sized, data);
   const extra = unlistedSlots(sized);
   const quota = colorQuotaSlots(data, catalog, used, rooms, goldRedLeft, extra);
-  const filled = level === "safe"
-    ? assignRecommendationSlots(quota, catalog, used, rooms, goldRedLeft)
-    : { worth: quotaLevelPrice(catalog, used, rooms, quota, level), goldRedLeft };
-  worth += filled.worth;
+  worth += quotaLevelPrice(catalog, used, rooms, quota, mode);
   const remaining = extra - quota.length;
-  if (remaining > 0) {
-    const shared = weightedOpenColorPrice(data, catalog, used, rooms, filled.goldRedLeft, level);
-    worth += shared * remaining * (level === "safe" ? 3 : 1);
-  }
+  if (remaining > 0) worth += weightedOpenColorPrice(data, catalog, used, rooms, goldRedLeft, mode) * remaining;
   return worth;
 }
 
@@ -3995,9 +4126,7 @@ function weightedOpenColorPrice(data, catalog, used, rooms, goldRedLeft, mode) {
 
 function levelPrice(prices, mode) {
   const average = prices.reduce((sum, price) => sum + price, 0) / prices.length;
-  if (mode === "cap") return average;
-  if (mode === "risk") return average * 0.5;
-  return Math.min(...prices);
+  return mode === "cap" ? average : average * 0.5;
 }
 
 function quotaLevelPrice(catalog, used, rooms, slots, mode) {
@@ -4017,11 +4146,7 @@ function lowestPartialPrice(catalog, slot, board, data, mode) {
     prices.push(treasure.price);
   });
   if (!prices.length) return 0;
-  const lowest = Math.min(...prices);
-  const average = prices.reduce((sum, price) => sum + price, 0) / prices.length;
-  if (mode === "cap") return average;
-  if (mode === "risk") return average * 0.5;
-  return Math.min(lowest * 3, average * 0.5);
+  return levelPrice(prices, mode);
 }
 
 function partialTreasureAllowed(treasure, slot, board, data) {
@@ -4075,20 +4200,6 @@ function colorQuotaSlots(data, catalog, used, rooms, goldRedLeft, extra) {
     left -= take;
   });
   return slots;
-}
-
-function assignRecommendationSlots(slots, catalog, used, rooms, goldRedLeft) {
-  let worth = 0;
-  let left = goldRedLeft;
-  slots.forEach((slot) => {
-    const taken = catalog.find((item) => !used.has(item.index) && recommendationFits(item, slot, rooms, left));
-    if (!taken) return;
-    used.add(taken.index);
-    if (left != null && !slot.rarity && (taken.rarity === "gold" || taken.rarity === "red") && left > 0) left -= 1;
-    spend(taken, slot, rooms);
-    worth += taken.price;
-  });
-  return { worth, goldRedLeft: left };
 }
 
 function recommendationSlot(item) {
@@ -4246,14 +4357,6 @@ function usesMaxConstraint(board) {
   return Object.keys(board.maxCounts.rarities || {}).some((id) => Number.isInteger(board.maxCounts.rarities[id]));
 }
 
-function houseRange(data, houseId) {
-  const house = (data.houses || []).find((entry) => entry.id === houseId);
-  return {
-    min: Number.isFinite(house?.minPrice) ? house.minPrice : 0,
-    max: Number.isFinite(house?.maxPrice) ? house.maxPrice : Infinity
-  };
-}
-
 function catalogWorth(board, data, pickMax) {
   return catalogWorthParts(board, data, pickMax, false).total;
 }
@@ -4263,50 +4366,40 @@ function catalogWorthParts(board, data, pickMax, includeUnlisted) {
   const slots = estimateSlots(board, includeUnlisted);
   const empty = { known: 0, unknown: 0, total: 0 };
   if (!slots.length || !treasures.length) return empty;
-  const rooms = openRooms(board, data);
-  const range = houseRange(data, board.house);
-  const byPrice = (left, right) => {
-    const diff = pickMax ? right.price - left.price : left.price - right.price;
-    return diff || left.index - right.index;
-  };
-  const items = treasures.map((item, index) => ({ ...item, index })).sort(byPrice);
-  const usual = items.filter((item) => item.price >= range.min && item.price <= range.max);
-  const cheaper = items.filter((item) => item.price < range.min);
-  const pricier = items.filter((item) => item.price > range.max);
-  const slotPool = () => {
-    if (!usual.length) return items;
-    return usual.concat(pickMax ? pricier : cheaper).sort(byPrice);
-  };
-  const ordered = slots
-    .map((slot, index) => ({
-      slot,
-      index,
-      choices: slotPool(slot).filter((item) => matchesFacts(item, slot)).length
-    }))
-    .sort((left, right) => left.choices - right.choices || left.index - right.index);
-  const used = new Set();
   const parts = { known: 0, unknown: 0 };
-  ordered.forEach((entry) => {
-    if (entry.slot.exactPrice != null) {
-      const claimed = items.find((catalogItem) => {
-        if (used.has(catalogItem.index)) return false;
-        if (entry.slot.exactName) return catalogItem.name === entry.slot.exactName;
-        return Number(catalogItem.price) === entry.slot.exactPrice && matchesFacts(catalogItem, entry.slot);
-      });
-      if (claimed) used.add(claimed.index);
-      addWorth(parts, entry.slot, entry.slot.exactPrice);
-      return;
-    }
-    const pool = slotPool(entry.slot);
-    const taken = takeItem(pool, used, entry.slot, rooms) ||
-      (pool === items ? null : takeItem(items, used, entry.slot, rooms));
-    if (!taken) return;
-    used.add(taken.item.index);
-    spend(taken.item, taken.slot, rooms);
-    addWorth(parts, entry.slot, taken.item.price);
-  });
+  fillSlots(slots, catalogByPrice(treasures, pickMax), new Set(), openRooms(board, data), parts);
   parts.total = parts.known + parts.unknown;
   return parts;
+}
+
+function catalogByPrice(treasures, pickMax) {
+  return treasures.map((item, index) => ({ ...item, index })).sort((left, right) => {
+    const diff = pickMax ? right.price - left.price : left.price - right.price;
+    return diff || left.index - right.index;
+  });
+}
+
+function fillSlots(slots, items, used, rooms, parts) {
+  slots
+    .map((slot, index) => ({ slot, index, choices: items.filter((item) => matchesFacts(item, slot)).length }))
+    .sort((left, right) => left.choices - right.choices || left.index - right.index)
+    .forEach((entry) => {
+      if (entry.slot.exactPrice != null) {
+        const claimed = items.find((catalogItem) => {
+          if (used.has(catalogItem.index)) return false;
+          if (entry.slot.exactName) return catalogItem.name === entry.slot.exactName;
+          return Number(catalogItem.price) === entry.slot.exactPrice && matchesFacts(catalogItem, entry.slot);
+        });
+        if (claimed) used.add(claimed.index);
+        addWorth(parts, entry.slot, entry.slot.exactPrice);
+        return;
+      }
+      const taken = takeItem(items, used, entry.slot, rooms);
+      if (!taken) return;
+      used.add(taken.item.index);
+      spend(taken.item, taken.slot, rooms);
+      addWorth(parts, entry.slot, taken.item.price);
+    });
 }
 
 function addWorth(parts, slot, price) {
@@ -4316,26 +4409,7 @@ function addWorth(parts, slot, price) {
 
 function estimateSlots(board, includeUnlisted) {
   const active = usesMaxConstraint(board) || includeUnlisted;
-  const slots = [];
-  (board.items || []).forEach((item) => {
-    const exact = exactTreasure(item);
-    if (exact || item.price != null) {
-      slots.push({
-        rarity: item.rarity && item.rarity !== "unknown" ? item.rarity : exact && exact.rarity || null,
-        type: item.type || (exact && exact.type) || null,
-        size: item.size == null ? (exact ? Number(exact.size) : null) : item.size,
-        exactName: exact ? exact.name : null,
-        exactPrice: item.price != null ? Number(item.price) : Number(exact.price)
-      });
-      return;
-    }
-    const rarity = item.rarity && item.rarity !== "unknown" ? item.rarity : null;
-    slots.push({
-      rarity,
-      type: item.type || null,
-      size: item.size == null ? null : item.size
-    });
-  });
+  const slots = listedSlots(board);
   if (!active || board.treasureTotal == null) return slots;
   const unlisted = Math.max(0, board.treasureTotal - (board.items || []).length);
   const fillers = Math.min(unlisted, 60);
@@ -4343,6 +4417,26 @@ function estimateSlots(board, includeUnlisted) {
     slots.push({ rarity: null, type: null, size: null, unlisted: true });
   }
   return slots;
+}
+
+function listedSlots(board) {
+  return (board.items || []).map((item) => {
+    const exact = exactTreasure(item);
+    if (exact || item.price != null) {
+      return {
+        rarity: item.rarity && item.rarity !== "unknown" ? item.rarity : exact && exact.rarity || null,
+        type: item.type || (exact && exact.type) || null,
+        size: item.size == null ? (exact ? Number(exact.size) : null) : item.size,
+        exactName: exact ? exact.name : null,
+        exactPrice: item.price != null ? Number(item.price) : Number(exact.price)
+      };
+    }
+    return {
+      rarity: item.rarity && item.rarity !== "unknown" ? item.rarity : null,
+      type: item.type || null,
+      size: item.size == null ? null : item.size
+    };
+  });
 }
 
 function openRooms(board, data) {
@@ -4719,5 +4813,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=280").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=281").catch(() => {});
 }

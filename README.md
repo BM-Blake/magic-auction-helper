@@ -6,14 +6,14 @@ Live page: https://bm-blake.github.io/magic-auction-helper/
 
 ## What it tracks
 
-- A hero and an auction house: Eruditio, Dawnlight, World, or Cosmic
+- A hero and an auction house: Eruditio, Dawnlight, World, Cosmic, or Secret
 - Revealed treasures by rarity, type, and size
 - Known prices the game has shown
 - A treasure total and maximum counts. A new maximum replaces the previous one. A total entered with no category keeps Max on, and new treasures stop at that total. Max beside Total treasures saves the current count as the total, and tapping it again clears that one
 - Known counts that can be split across different rarities, types, and sizes
-- An estimate of worth from the treasure catalog
-- Three bids under Recommendations: safe bet at 80% of the cheapest possible worth, calculated risk uses half the average price wherever safe bet uses the lowest possible price, and it drops the tripling. Never more than uses the average price. A known color, type, or size uses the lower of 3 times the lowest possible price of what is known and half the average price of every treasure that can still fill that slot. Listed treasures that already fill a maximum do not raise that price. A maximum with nothing listed still leaves that color, type, or size out. Missing treasures fill a color that has a maximum first, cheapest color first. Anything left with no color maximum costs 3 times the sum of the cheapest possible price of each open color, divided by the weights gray 32, green 16, blue 8, purple 4, gold 2, and red 1. A color, type, or size that cannot appear is left out. The three prices stay at 0 until this game has a treasure, a total, or a maximum. Houses with logged match totals use the lowest logged count for all three prices until the treasure total is known
-- Match history saves each finished round on the device, including the recommendation prices
+- An estimate of worth from the treasure catalog, capped at the house's usual value for a whole pool
+- Three bids under Recommendations. Safe bet is the cheapest the whole pool can be, so winning at or under it can't lose coins: every listed treasure, every treasure a color maximum still needs, and the rest of the treasure total get the cheapest catalog treasure each can still be, and each catalog treasure is used once. Calculated risk and Never more than are 80% of a worth where known prices count in full, and every other treasure adds half the average price of what can still fill its slot, or the average price. Listed treasures that already fill a maximum do not raise that price. A maximum with nothing listed still leaves that color, type, or size out. Missing treasures fill a color that has a maximum first, cheapest color first. Anything left with no color maximum uses the sum of each open color's price, divided by the weights gray 32, green 16, blue 8, purple 4, gold 2, and red 1. A color, type, or size that cannot appear is left out. That worth stops at the house's usual pool value, and neither price goes below Safe bet. The three prices stay at 0 until this game has a treasure, a total, or a maximum. Houses with logged match totals use the lowest logged count for all three prices until the treasure total is known
+- Match history saves each finished round on the device, with the recommendation prices and the pool value, winning bid, and win or loss entered at End game. With a pool value, each price shows the profit or loss of winning at that price
 
 The Magic Auction database lists the catalog treasures and filters them by name, rarity, type, and size.
 
@@ -29,9 +29,9 @@ Open the page once while online. A service worker then saves the page and its da
 
 ## Data
 
-House price bands, logged treasure totals, and the rarity, type, and size lists live in `data/auction.json`. Catalog names, prices, and shapes live in `data/treasures.json`, recorded from the live Treasure Collection.
+House pool ranges, logged treasure totals, and the rarity, type, and size lists live in `data/auction.json`. Catalog names, prices, and shapes live in `data/treasures.json`, recorded from the live Treasure Collection.
 
-The estimate uses each catalog treasure at most once. A house range is the usual price band, and a revealed treasure can be worth more or less than that band.
+The estimate uses each catalog treasure at most once. A house range is the usual value of a whole pool, and its top caps Estimate worth, Calculated risk, and Never more than.
 
 ## License
 

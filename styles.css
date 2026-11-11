@@ -581,7 +581,8 @@ button { cursor: pointer; }
 }
 
 .manual-dialog,
-.crypto-dialog {
+.crypto-dialog,
+.end-dialog {
   width: min(448px, calc(100% - 32px));
   margin: auto;
   padding: 16px;
@@ -598,8 +599,31 @@ button { cursor: pointer; }
 }
 
 .manual-dialog::backdrop,
-.crypto-dialog::backdrop {
+.crypto-dialog::backdrop,
+.end-dialog::backdrop {
   background: rgba(8, 10, 14, 0.72);
+}
+
+.end-dialog { padding: 0; }
+
+.end-dialog form { padding: 16px; }
+
+.end-dialog .hint {
+  margin: 0;
+  color: var(--muted);
+}
+
+.end-won {
+  display: flex;
+  gap: 8px;
+}
+
+.end-won .ghost { flex: 1 1 0; }
+
+.end-won .ghost[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--gold);
+  color: var(--gold-ink);
 }
 
 .manual-item + .manual-item { margin-top: 2px; }
