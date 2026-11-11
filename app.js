@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=283"),
-      fetch("data/treasures.json?v=283")
+      fetch("data/auction.json?v=284"),
+      fetch("data/treasures.json?v=284")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -2264,7 +2264,7 @@ function adjustChip(button) {
   const kind = button.dataset.field;
   const id = button.dataset.id;
   const delta = Number(button.dataset.chipAdjust);
-  const changed = delta > 0 ? increaseChip(kind, id) : decreaseChild({}, kind, id);
+  const changed = delta > 0 ? increaseChip(kind, id) : decreaseChip(kind, id);
   if (!changed) return;
   persist();
   render();
@@ -2275,6 +2275,26 @@ function increaseChip(kind, id) {
   if (!roomForAnotherTreasure()) return increaseChild({}, kind, id);
   if (blockedByMaxedCategory({})) return false;
   return createTreasure({}, kind, id);
+}
+
+function decreaseChip(kind, id) {
+  if (id === "unknown" || !state.board) return false;
+  const specific = {};
+  writeDetailFact(specific, kind, id);
+  for (let index = state.board.items.length - 1; index >= 0; index -= 1) {
+    const item = state.board.items[index];
+    if (!itemMatches(item, specific) || !removablePlainItem(item, kind)) continue;
+    state.board.items.splice(index, 1);
+    return true;
+  }
+  return false;
+}
+
+function removablePlainItem(item, kind) {
+  if (kind === "types" && item.type === "collection" && sizeKey(item.size) === collectionShape()) {
+    return !itemHasOtherProperty(Object.assign({}, item, { size: null }), kind);
+  }
+  return !itemHasOtherProperty(item, kind);
 }
 
 function roomForAnotherTreasure() {
@@ -3013,7 +3033,12 @@ function canDecrease(facts, field, id) {
   const specific = Object.assign({}, facts);
   writeDetailFact(specific, field, id);
   const clearField = fieldToClear(facts, field);
-  return state.board.items.some((item) => itemMatches(item, specific) && !exactTreasure(item) && (clearField !== "sizes" || item.type !== "collection"));
+  return state.board.items.some((item) => {
+    if (!itemMatches(item, specific) || exactTreasure(item)) return false;
+    if (clearField === "sizes" && item.type === "collection") return false;
+    if (!positiveFact(facts)) return removablePlainItem(item, field);
+    return true;
+  });
 }
 
 function canAssign(facts, field, id) {
@@ -4857,5 +4882,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=283").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=284").catch(() => {});
 }
