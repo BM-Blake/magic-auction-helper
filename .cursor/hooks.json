@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "node .cursor/hooks/check-cache-version.js",
+        "matcher": "git commit",
+        "failClosed": true
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+---
+description: Keep the Magic Auction cache version identical across the app shell
+alwaysApply: true
+---
+
+# Cache version
+
+When `app.js`, `index.html`, `styles.css`, `sw.js`, or `manifest.webmanifest` changes, set the same cache version in all of these:
+
+- `app.js` data fetches and `sw.js?v=`
+- `index.html` icon, stylesheet, and script
+- `sw.js` `CACHE` name `magic-auction-vN` and each asset `?v=N`
+- `manifest.webmanifest` icon
+
+`app.js` at `?v=280` with `sw.js` at `magic-auction-v279` is a failed bump. Set every copy to the same number. `privacy.html` keeps `styles.css?v=141`. Do not pretty-print `data/treasures.json`.

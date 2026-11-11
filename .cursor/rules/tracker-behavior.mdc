@@ -1,0 +1,17 @@
+---
+description: Magic Auction tracker rules for totals, maximums, and the live board
+alwaysApply: true
+---
+
+# Tracker behavior
+
+- A positive integer `treasureTotal` is the only known total. `null` and `0` stay unknown. Do not load a stored null as 0.
+- A known total blocks a new treasure once `items.length` reaches it. An existing count above that total stays.
+- A Max with no category sets `treasureTotal` and `treasureTotalLocked`, which locks `#treasure-max`. The Max button's own toggle stays unlocked.
+- Max and Both replace the stored number. Max does not raise the known count.
+- A lower Max or Both removes only plain treasures of that category, from the end, until the count matches. A plain treasure has only that category: no other rarity, type, or size, no price, and no `catalogName`. If a protected treasure would have to be removed, reject the change and keep the board. Example: Gray has two plain treasures and one that also has a type. Max 2 removes one plain gray. Max 1 is rejected.
+- A chip shows when its count is above 0 or its max is a positive integer. Count 0 and max 0 stays hidden.
+- One known treasure opens its item card. Two or more keep the other categories above the list.
+- The main chip increase arrow adds a new treasure while the total is unknown or `items.length` is still below it. It stops when that total is full or the category is at its max.
+- Do not call `endGame` in a test. Do not write an old snapshot over the live board. If a test changes `localStorage` key `magic-auction-items-v1`, restore the exact saved string.
+- Do not commit `android/` or Play listing files unless asked.
