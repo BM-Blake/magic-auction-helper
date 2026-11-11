@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=281"),
-      fetch("data/treasures.json?v=281")
+      fetch("data/auction.json?v=282"),
+      fetch("data/treasures.json?v=282")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -4087,6 +4087,7 @@ function recommendationWorth(board, data, total, mode) {
     .sort((left, right) => left.price - right.price || left.index - right.index);
   const used = new Set();
   let worth = 0;
+  const open = [];
   (board.items || []).forEach((item) => {
     if (item.price != null && Number.isFinite(Number(item.price))) {
       worth += Number(item.price);
@@ -4098,15 +4099,58 @@ function recommendationWorth(board, data, total, mode) {
       return;
     }
     const slot = recommendationSlot(item);
+    if (slot.rarity) worth += lowestPartialPrice(catalog, slot, sized, data, mode);
+    else open.push(slot);
+  });
+  const colors = finiteColorRooms(data, catalog, rooms);
+  open.forEach((slot) => {
+    const color = colors.find((entry) => entry.room > 0);
+    if (!color) return;
+    color.room -= 1;
+    if (rooms && rooms.rarities) rooms.rarities[color.id] -= 1;
+    slot.rarity = color.id;
+  });
+  let goldRedLeft = goldRedRoom(sized, data);
+  open.forEach((slot) => {
+    if (slot.rarity) {
+      worth += lowestPartialPrice(catalog, slot, sized, data, mode);
+      return;
+    }
+    if (goldRedLeft != null && goldRedLeft > 0) {
+      worth += pooledColorPrice(catalog, ["gold", "red"], mode);
+      goldRedLeft -= 1;
+      return;
+    }
     worth += lowestPartialPrice(catalog, slot, sized, data, mode);
   });
-  const goldRedLeft = goldRedRoom(sized, data);
   const extra = unlistedSlots(sized);
   const quota = colorQuotaSlots(data, catalog, used, rooms, goldRedLeft, extra);
   worth += quotaLevelPrice(catalog, used, rooms, quota, mode);
-  const remaining = extra - quota.length;
+  let remaining = extra - quota.length;
+  const goldRedTake = goldRedLeft == null ? 0 : Math.min(remaining, Math.max(0, goldRedLeft));
+  if (goldRedTake > 0) {
+    worth += goldRedTake * pooledColorPrice(catalog, ["gold", "red"], mode);
+    remaining -= goldRedTake;
+    goldRedLeft -= goldRedTake;
+  }
   if (remaining > 0) worth += weightedOpenColorPrice(data, catalog, used, rooms, goldRedLeft, mode) * remaining;
   return worth;
+}
+
+function finiteColorRooms(data, catalog, rooms) {
+  const ids = ((data && data.rarities) || []).map((entry) => entry.id).filter((id) => id && id !== "unknown");
+  return ids
+    .filter((id) => rooms && rooms.rarities && Number.isFinite(rooms.rarities[id]) && rooms.rarities[id] > 0)
+    .map((id) => {
+      const cheapest = catalog.find((item) => item.rarity === id);
+      return { id, room: rooms.rarities[id], price: cheapest ? cheapest.price : Infinity };
+    })
+    .sort((left, right) => left.price - right.price || ids.indexOf(left.id) - ids.indexOf(right.id));
+}
+
+function pooledColorPrice(catalog, ids, mode) {
+  const prices = catalog.filter((item) => ids.includes(item.rarity)).map((item) => item.price);
+  return prices.length ? levelPrice(prices, mode) : 0;
 }
 
 function weightedOpenColorPrice(data, catalog, used, rooms, goldRedLeft, mode) {
@@ -4813,5 +4857,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=281").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=282").catch(() => {});
 }
