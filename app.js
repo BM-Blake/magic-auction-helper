@@ -28,8 +28,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=284"),
-      fetch("data/treasures.json?v=284")
+      fetch("data/auction.json?v=285"),
+      fetch("data/treasures.json?v=285")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -955,38 +955,8 @@ function specifyProbe(group, detail, kind, id) {
   };
 }
 
-function usesProbe(item, probe) {
-  if (!probe.rarity && !probe.type && probe.size == null) return false;
-  if (probe.rarity && item.rarity !== probe.rarity) return false;
-  if (probe.type && !typeMatches(item.type || "", probe.type)) return false;
-  if (probe.size != null && sizeKey(item.size) !== sizeKey(probe.size)) return false;
-  if (probe.price != null && Number(item.price) !== probe.price) return false;
-  if (probe.rarity && !item.rarity) return false;
-  if (probe.type && !item.type) return false;
-  if (probe.size != null && (item.size == null || item.size === "")) return false;
-  return true;
-}
-
-function probeTaken(group, probe, exceptDetail) {
-  let taken = (state.board && state.board.items || []).filter((item) => usesProbe(item, probe)).length;
-  (group.details || []).forEach((detail) => {
-    if (detail === exceptDetail) return;
-    const view = {
-      rarity: detail.rarity || group.rarity || "",
-      type: detail.type || group.type || "",
-      size: detail.size || group.size || null,
-      price: detail.price != null && detail.price !== "" ? Number(detail.price) : null
-    };
-    if (view.size === "") view.size = null;
-    if (usesProbe(view, probe)) taken += 1;
-  });
-  return taken;
-}
-
 function specifyWithinCatalog(group, detail, kind, id) {
-  const probe = specifyProbe(group, detail, kind, id);
-  const supply = matchingTreasures(probe).length;
-  return supply > 0 && probeTaken(group, probe, detail) < supply;
+  return matchingTreasures(specifyProbe(group, detail, kind, id)).length > 0;
 }
 
 function specifyFits(group, detail, kind, id) {
@@ -4571,24 +4541,13 @@ function matchingTreasures(item) {
   }).sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function uniqueClaimedEarlier(item, name) {
-  const items = state.board && state.board.items || [];
-  for (const other of items) {
-    if (other === item) return false;
-    if (other.catalogName === name) return true;
-    const matches = matchingTreasures(other);
-    if (matches.length === 1 && matches[0].name === name) return true;
-  }
-  return false;
-}
-
 function exactTreasure(item) {
   const matches = matchingTreasures(item);
   if (item && item.catalogName) {
     const chosen = matches.find((treasure) => treasure.name === item.catalogName);
-    if (chosen && !uniqueClaimedEarlier(item, chosen.name)) return chosen;
+    if (chosen) return chosen;
   }
-  if (matches.length !== 1 || uniqueClaimedEarlier(item, matches[0].name)) return null;
+  if (matches.length !== 1) return null;
   return matches[0];
 }
 
@@ -4882,5 +4841,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=284").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=285").catch(() => {});
 }
