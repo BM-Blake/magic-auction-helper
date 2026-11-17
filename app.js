@@ -29,8 +29,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=289"),
-      fetch("data/treasures.json?v=289")
+      fetch("data/auction.json?v=290"),
+      fetch("data/treasures.json?v=290")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -563,8 +563,9 @@ function buildValeCard(group) {
   entry.append(head, label);
   const count = parseCount(group.count);
   if (count > 0) {
-    const sizes = specifyBlock(group);
-    if (sizes) entry.appendChild(sizes);
+    const sizes = choiceStepperField("Size", "size", "add-sizes", group, specifyOptions("size"), "Size");
+    sizes.hidden = false;
+    entry.appendChild(sizes);
   }
   return entry;
 }
@@ -4942,5 +4943,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=289").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=290").catch(() => {});
 }
