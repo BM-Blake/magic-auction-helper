@@ -29,8 +29,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=290"),
-      fetch("data/treasures.json?v=290")
+      fetch("data/auction.json?v=292"),
+      fetch("data/treasures.json?v=292")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -396,7 +396,174 @@ function valeColor() {
 }
 
 function valeGroup(rarity) {
-  return { rarity, type: "", size: "", count: "", price: "", use: "both", open: "", details: [], updraft: true };
+  return { rarity, type: "", size: "", count: "", price: "", use: "both", open: "", details: [], adopted: [], updraft: true };
+}
+
+function itemHasSize(item) {
+  return item.size != null && item.size !== "";
+}
+
+function itemHasType(item) {
+  return Boolean(item.type && item.type !== "unknown");
+}
+
+function valeAutomatic(group) {
+  if (!state.board) return [];
+  return state.board.items.filter((item) => item.rarity === group.rarity);
+}
+
+function valeCandidates(group) {
+  if (!state.board) return [];
+  return state.board.items.filter((item) => (!item.rarity || item.rarity === "unknown") && (itemHasType(item) || itemHasSize(item)));
+}
+
+function valeLinkedItems(group) {
+  const adopted = new Set(group.adopted || []);
+  return valeAutomatic(group).concat(valeCandidates(group).filter((item) => adopted.has(item.id)));
+}
+
+function valeItemSettled(item) {
+  return itemHasSize(item) || item.type === "collection";
+}
+
+function valeSettled(group) {
+  return valeLinkedItems(group).filter((item) => valeItemSettled(item));
+}
+
+function valeOpenTargets(group) {
+  return valeLinkedItems(group).filter((item) => itemHasType(item) && !itemHasSize(item) && item.type !== "collection");
+}
+
+function valePlainSlots(group) {
+  const count = parseCount(group.count);
+  if (count == null) return null;
+  return Math.max(0, count - valeSettled(group).length - valeOpenTargets(group).length);
+}
+
+function valeItemLabel(item) {
+  if (item.catalogName) return item.catalogName;
+  const parts = [];
+  if (itemHasType(item)) parts.push(typeName(item.type));
+  if (itemHasSize(item)) parts.push(sizeLabel(item.size, item.type));
+  return parts.join(" · ") || "Treasure";
+}
+
+function syncValeDraft(group) {
+  if (!group.adopted) group.adopted = [];
+  const candidateIds = new Set(valeCandidates(group).map((item) => item.id));
+  group.adopted = group.adopted.filter((id) => candidateIds.has(id));
+  const count = parseCount(group.count);
+  if (count == null || count === 0) {
+    group.adopted = [];
+    group.details = [];
+    return;
+  }
+  const room = Math.max(0, count - valeAutomatic(group).length);
+  if (group.adopted.length > room) group.adopted = group.adopted.slice(0, room);
+  const previous = new Map((group.details || []).filter((detail) => detail.itemId).map((detail) => [detail.itemId, detail]));
+  const typed = valeOpenTargets(group).map((item) => {
+    const old = previous.get(item.id);
+    return { rarity: "", type: item.type || "", size: old && old.size ? old.size : "", price: "", open: "", itemId: item.id };
+  });
+  const limit = valePlainSlots(group);
+  const plain = (group.details || []).filter((detail) => !detail.itemId && detailInScope(detail, "size", "plain") && detail.size);
+  group.details = typed.concat(limit == null ? plain : plain.slice(0, limit));
+}
+
+function valeCandidateKey(item) {
+  return [item.catalogName || "", itemHasType(item) ? item.type : "", itemHasSize(item) ? sizeKey(item.size) : ""].join("\0");
+}
+
+function valeCandidateGroups(group) {
+  const buckets = new Map();
+  valeCandidates(group).forEach((item) => {
+    const key = valeCandidateKey(item);
+    if (!buckets.has(key)) buckets.set(key, { key, label: valeItemLabel(item), items: [] });
+    buckets.get(key).items.push(item);
+  });
+  return [...buckets.values()];
+}
+
+function valeAdoptRoom(group) {
+  const count = parseCount(group.count);
+  if (count == null) return Infinity;
+  return Math.max(0, count - valeAutomatic(group).length - (group.adopted || []).length);
+}
+
+function valeCandidateField(group) {
+  const buckets = valeCandidateGroups(group);
+  if (!buckets.length) return null;
+  const color = rarityName(group.rarity).toLowerCase();
+  const field = document.createElement("fieldset");
+  field.className = "cat-panel";
+  const legend = document.createElement("legend");
+  legend.textContent = `Could be ${color}`;
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  const adopted = new Set(group.adopted || []);
+  const room = valeAdoptRoom(group);
+  buckets.forEach((bucket) => {
+    const chosen = bucket.items.filter((item) => adopted.has(item.id)).length;
+    const sizeOnly = bucket.items.every((item) => !itemHasType(item) && itemHasSize(item));
+    const wrap = document.createElement("div");
+    wrap.className = "chip-wrap";
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = chosen > 0 ? "chip is-on" : "chip";
+    chip.dataset.valeGroup = bucket.key;
+    chip.dataset.valeStep = "fill";
+    chip.setAttribute("aria-label", `${bucket.label}, ${chosen} of ${bucket.items.length}`);
+    const name = document.createElement("span");
+    name.textContent = bucket.label;
+    const number = document.createElement("span");
+    number.className = "count";
+    number.textContent = sizeOnly ? `×${chosen}` : String(chosen);
+    chip.append(name, number);
+    const up = document.createElement("button");
+    up.type = "button";
+    up.className = "step-btn chip-adjust";
+    up.dataset.valeGroup = bucket.key;
+    up.dataset.valeStep = "1";
+    up.disabled = chosen >= bucket.items.length || room <= 0;
+    up.textContent = "▲";
+    up.setAttribute("aria-label", `Increase ${bucket.label}`);
+    const down = document.createElement("button");
+    down.type = "button";
+    down.className = "step-btn chip-adjust";
+    down.dataset.valeGroup = bucket.key;
+    down.dataset.valeStep = "-1";
+    down.disabled = chosen === 0;
+    down.textContent = "▼";
+    down.setAttribute("aria-label", `Decrease ${bucket.label}`);
+    wrap.append(chip, spinColumn(up, down));
+    chips.appendChild(wrap);
+  });
+  field.append(legend, chips);
+  return field;
+}
+
+function adjustValeGroup(group, key, step) {
+  const bucket = valeCandidateGroups(group).find((entry) => entry.key === key);
+  if (!bucket || !group.adopted) group.adopted = group.adopted || [];
+  if (!bucket) return;
+  const chosen = () => bucket.items.filter((item) => group.adopted.includes(item.id));
+  if (step === "-1") {
+    const last = chosen()[chosen().length - 1];
+    if (!last) return;
+    group.adopted = group.adopted.filter((id) => id !== last.id);
+  } else {
+    const waiting = bucket.items.filter((item) => !group.adopted.includes(item.id));
+    const take = step === "fill" ? waiting.length : 1;
+    const room = valeAdoptRoom(group);
+    if (!take || !waiting.length) return;
+    if (room <= 0) {
+      showError(`${rarityName(group.rarity)} already accounts for ${parseCount(group.count)}.`);
+      return;
+    }
+    waiting.slice(0, Math.min(take, room)).forEach((item) => group.adopted.push(item.id));
+  }
+  rerenderGroups();
+  hideError();
 }
 
 function groupSignature(group) {
@@ -563,9 +730,29 @@ function buildValeCard(group) {
   entry.append(head, label);
   const count = parseCount(group.count);
   if (count > 0) {
-    const sizes = choiceStepperField("Size", "size", "add-sizes", group, specifyOptions("size"), "Size");
-    sizes.hidden = false;
-    entry.appendChild(sizes);
+    syncValeDraft(group);
+    const candidates = valeCandidateField(group);
+    if (candidates) entry.appendChild(candidates);
+    const settled = valeSettled(group).filter((item) => itemHasSize(item)).length;
+    if (settled) {
+      const known = document.createElement("p");
+      known.className = "hint vale-known";
+      const color = rarityName(group.rarity).toLowerCase();
+      known.textContent = settled === 1 ? `1 ${color} already has a size.` : `${settled} ${color} already have a size.`;
+      entry.appendChild(known);
+    }
+    const seenTypes = new Set();
+    valeOpenTargets(group).forEach((item) => {
+      if (!item.type || seenTypes.has(item.type)) return;
+      seenTypes.add(item.type);
+      const label = typeName(item.type);
+      entry.appendChild(choiceStepperField(label, "size", "add-sizes", group, specifyOptions("size"), label, { kind: "type", id: item.type }));
+    });
+    const plainSlots = valePlainSlots(group);
+    const plainSet = (group.details || []).some((detail) => !detail.itemId && detail.size);
+    if ((plainSlots || 0) > 0 || plainSet) {
+      entry.appendChild(choiceStepperField("Size", "size", "add-sizes", group, specifyOptions("size"), "Size", "plain"));
+    }
   }
   return entry;
 }
@@ -936,7 +1123,8 @@ function otherKinds(kind) {
 
 function detailInScope(detail, kind, scope) {
   if (!scope) return true;
-  if (scope === "plain") return otherKinds(kind).every((other) => !detail[other]);
+  if (scope === "plain") return otherKinds(kind).every((other) => !detail[other]) && !detail.itemId;
+  if (scope.kind === "item") return detail.itemId === scope.id;
   return detail[scope.kind] === scope.id;
 }
 
@@ -948,6 +1136,13 @@ function plainRoom(group, kind) {
   const count = parseCount(group.count);
   if (count == null) return Infinity;
   const details = group.details || [];
+  if (group.updraft && kind === "size") {
+    const cap = valePlainSlots(group);
+    if (cap == null) return Infinity;
+    const plain = details.filter((detail) => detailInScope(detail, kind, "plain"));
+    const waiting = plain.filter((detail) => !detail[kind]).length;
+    return waiting + Math.max(0, cap - plain.length);
+  }
   const waiting = details.filter((detail) => detailInScope(detail, kind, "plain") && !detail[kind]).length;
   return waiting + Math.max(0, count - details.length);
 }
@@ -1129,6 +1324,10 @@ function fillSpecify(group, kind, id, scope) {
     showError("Enter a whole number of at least 1 for each group.");
     return;
   }
+  if (group.updraft && kind === "size" && scope === "plain") {
+    fillUpdraftPlain(group, id);
+    return;
+  }
   if (!group.details) group.details = [];
   const scoped = scope && scope !== "all";
   let changed = false;
@@ -1146,6 +1345,31 @@ function fillSpecify(group, kind, id, scope) {
       writeSpecify(detail, kind, id);
       changed = true;
     }
+  }
+  if (!changed) return;
+  rerenderGroups();
+  hideError();
+}
+
+function fillUpdraftPlain(group, id) {
+  const cap = valePlainSlots(group);
+  if (cap == null) {
+    showError("Enter a whole number of at least 1 for each group.");
+    return;
+  }
+  if (!group.details) group.details = [];
+  let changed = false;
+  const fits = (detail) => !specifyAtMax(group, "size", id) && specifyFits(group, detail, "size", id) && specifyWithinCatalog(group, detail, "size", id);
+  group.details.forEach((detail) => {
+    if (!detailInScope(detail, "size", "plain") || detail.size || !fits(detail)) return;
+    writeSpecify(detail, "size", id);
+    changed = true;
+  });
+  while ((group.details || []).filter((detail) => detailInScope(detail, "size", "plain") && detail.size).length < cap && fits(emptyDetail())) {
+    const detail = emptyDetail();
+    group.details.push(detail);
+    writeSpecify(detail, "size", id);
+    changed = true;
   }
   if (!changed) return;
   rerenderGroups();
@@ -1263,24 +1487,27 @@ function specifyKindAssigned(group, kind) {
 }
 
 function choiceStepperField(legendText, kind, extraClass, group, options, ariaLabel, scope) {
+  const nested = Boolean(scope && scope !== "plain");
   const fieldset = document.createElement("fieldset");
-  fieldset.className = scope ? "cat-panel is-nested" : "cat-panel";
+  fieldset.className = nested ? "cat-panel is-nested" : "cat-panel";
   fieldset.dataset.catPanel = kind;
-  const locked = kind === "size" && !scope && detailsAllCollection(group);
+  const locked = kind === "size" && !nested && scope !== "plain" && detailsAllCollection(group);
   fieldset.hidden = locked || (!scope && group.open !== kind);
-  const scopeKey = scope ? `${scope.kind}:${scope.id}` : "plain";
+  const scopeKey = nested ? `${scope.kind}:${scope.id}` : "plain";
+  const activeScope = nested ? scope : "plain";
+  const fillScope = scope ? scopeKey : "all";
   const chips = document.createElement("div");
   chips.className = extraClass ? `chips ${extraClass}` : "chips";
   chips.setAttribute("role", "group");
   chips.setAttribute("aria-label", ariaLabel);
   options.forEach((option) => {
-    const count = specifyScopedCount(group, kind, option.id, scope || "plain");
-    const canAdd = canAddSpecify(group, kind, option.id, scope || "plain");
+    const count = specifyScopedCount(group, kind, option.id, activeScope);
+    const canAdd = canAddSpecify(group, kind, option.id, activeScope);
     if (count === 0 && !canAdd) return;
     const wrap = document.createElement("div");
     wrap.className = "chip-wrap";
     wrap.append(
-      specifyCountChip(kind, option, count, scope ? scopeKey : "all"),
+      specifyCountChip(kind, option, count, fillScope),
       spinColumn(
         specifyStepButton(kind, option, "1", !canAdd, scopeKey),
         specifyStepButton(kind, option, "-1", count === 0, scopeKey)
@@ -1573,6 +1800,14 @@ function onSheetClick(event) {
     removeValeCard();
     return;
   }
+  const adopt = event.target.closest("[data-vale-step]");
+  if (adopt) {
+    const entry = adopt.closest("[data-group]");
+    const group = entry && state.groups[Number(entry.dataset.group)];
+    if (!group) return;
+    adjustValeGroup(group, adopt.dataset.valeGroup, adopt.dataset.valeStep);
+    return;
+  }
   const remove = event.target.closest("[data-remove-group]");
   if (remove) {
     removeGroup(Number(remove.dataset.removeGroup));
@@ -1826,7 +2061,7 @@ function removeJohnsonCard() {
 
 function untouchedValeCard() {
   const group = state.groups[0];
-  return state.groups.length === 1 && group && group.updraft && !String(group.count || "").trim() && !(group.details || []).length;
+  return state.groups.length === 1 && group && group.updraft && !String(group.count || "").trim() && !(group.details || []).length && !(group.adopted || []).length;
 }
 
 function removeValeCard() {
@@ -1851,6 +2086,7 @@ function onAdd(event) {
   const parsed = [];
   for (let index = 0; index < state.groups.length; index += 1) {
     const group = state.groups[index];
+    if (group.updraft) syncValeDraft(group);
     const count = parseCount(group.count);
     if (count == null) {
       showError("Enter a whole number for each group.");
@@ -1875,7 +2111,7 @@ function onAdd(event) {
     }
     const details = use === "max" ? [] : (group.details || []).filter((detail) => detail.rarity || detail.type || detail.size || String(detail.price || "").trim()).map((detail) => {
       const raw = String(detail.price || "").trim();
-      const picked = { rarity: detail.rarity || "", type: detail.type || "", size: detail.size || "" };
+      const picked = { rarity: detail.rarity || "", type: detail.type || "", size: detail.size || "", itemId: detail.itemId || "" };
       if (!raw) return Object.assign(picked, { price: null });
       const price = parseCoins(raw);
       if (Number.isNaN(price)) return { error: true };
@@ -1896,7 +2132,9 @@ function onAdd(event) {
       size: group.size || null,
       prices: prices.prices,
       use,
-      details
+      details,
+      updraft: Boolean(group.updraft),
+      adopted: group.updraft ? (group.adopted || []).slice() : []
     };
     const picks = categoryPicks(spec);
     if (use === "max" && picks.length > 1) {
@@ -1963,6 +2201,7 @@ function applyMaxes(specs) {
 }
 
 function applyCountTarget(spec) {
+  if (spec.updraft) return applyUpdraft(spec);
   const picks = categoryPicks(spec);
   if (!picks.length) return null;
   const add = spec.use === "both" ? bothAddCount(spec) : 0;
@@ -1979,6 +2218,46 @@ function applyCountTarget(spec) {
     }
   }
   picks.forEach((pick) => removePlainItems(pick, spec.count));
+  return null;
+}
+
+function applyUpdraft(spec) {
+  const color = spec.rarity;
+  const adopted = new Set(spec.adopted || []);
+  const items = state.board.items;
+  const automatic = items.filter((item) => item.rarity === color);
+  const chosen = items.filter((item) => adopted.has(item.id) && item.rarity !== color);
+  const protectedCount = automatic.filter((item) => itemHasOtherProperty(item, "rarities")).length + chosen.length;
+  if (spec.count < protectedCount) {
+    return { message: `Lowering ${rarityName(color)} to ${spec.count} would remove a treasure that already has another property.` };
+  }
+  chosen.forEach((item) => {
+    item.rarity = color;
+  });
+  removePlainItems({ kind: "rarities", id: color }, spec.count);
+  const byId = new Map(state.board.items.map((item) => [item.id, item]));
+  const plainSizes = [];
+  (spec.details || []).forEach((detail) => {
+    if (detail.itemId) {
+      const item = byId.get(detail.itemId);
+      if (item && detail.size) item.size = detail.size;
+      return;
+    }
+    if (detail.size) plainSizes.push(detail.size);
+  });
+  state.board.items.forEach((item) => {
+    if (item.rarity === color && item.type === "collection" && !itemHasSize(item)) item.size = collectionShape();
+  });
+  state.board.items.forEach((item) => {
+    if (!plainSizes.length || item.rarity !== color || itemHasType(item) || itemHasSize(item)) return;
+    item.size = plainSizes.shift();
+  });
+  const have = state.board.items.filter((item) => item.rarity === color).length;
+  const add = Math.max(0, spec.count - have);
+  for (let index = 0; index < add; index += 1) {
+    const size = plainSizes.length ? plainSizes.shift() : null;
+    state.board.items.push(blankItem({ rarity: color, size }));
+  }
   return null;
 }
 
@@ -4943,5 +5222,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=290").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=292").catch(() => {});
 }

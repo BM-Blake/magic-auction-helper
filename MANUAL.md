@@ -18,7 +18,7 @@ The first time you add information as Johnson, gray, green, and blue share one c
 
 ### Vale
 
-Each time you add information as Vale, Updraft offers the next color: gray, then green, then blue, then purple. The number is how many there are, and their maximum, and you can split their sizes. You can remove that card. After purple, adding returns to the normal card.
+Each time you add information as Vale, Updraft offers the next color: gray, then green, then blue, then purple. The number is how many there are, and their maximum. A treasure of that color that already has a size counts toward the number, so the sizes cover the rest. One that has a type and no size gets its own size. A treasure with no color can be chosen when it is this color. You can remove that card. After purple, adding returns to the normal card.
 
 ## Read what you have
 

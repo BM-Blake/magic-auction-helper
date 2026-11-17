@@ -1657,7 +1657,9 @@ select.group-use {
   -moz-appearance: textfield;
 }
 
-.vale-updraft > .field { max-width: 140px; }
+.vale-updraft .cat-panel { margin-top: 10px; }
+
+.vale-updraft .vale-known { margin: 8px 0 0; }
 
 .vale-updraft input[type="number"] {
   text-align: center;
