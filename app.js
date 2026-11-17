@@ -13,6 +13,7 @@ const state = {
   historyOpen: null,
   groups: [emptyGroup()],
   johnsonIntroUsed: false,
+  valeUpdraftStep: 0,
   database: { rarity: "", type: "", size: "", sort: "price-desc", open: { rarity: false, type: false, size: false } }
 };
 
@@ -28,8 +29,8 @@ async function init() {
 
   try {
     const [auctionResponse, treasureResponse] = await Promise.all([
-      fetch("data/auction.json?v=285"),
-      fetch("data/treasures.json?v=285")
+      fetch("data/auction.json?v=289"),
+      fetch("data/treasures.json?v=289")
     ]);
     if (!auctionResponse.ok || !treasureResponse.ok) throw new Error("Auction data did not load.");
     state.data = await auctionResponse.json();
@@ -388,6 +389,16 @@ function johnsonPreset() {
   return [johnsonGroup("gray"), johnsonGroup("green"), johnsonGroup("blue")];
 }
 
+const VALE_UPDRAFT = ["gray", "green", "blue", "purple"];
+
+function valeColor() {
+  return VALE_UPDRAFT[state.valeUpdraftStep] || null;
+}
+
+function valeGroup(rarity) {
+  return { rarity, type: "", size: "", count: "", price: "", use: "both", open: "", details: [], updraft: true };
+}
+
 function groupSignature(group) {
   const details = (group.details || []).map((detail) => [detail.rarity, detail.type, detail.size, detail.price, detail.open].join("\u0001")).join("\u0002");
   return [group.rarity, group.type, group.size, group.count, group.price, group.use, group.open, details].join("\0");
@@ -401,6 +412,14 @@ function applyJohnsonIntro() {
   if (!state.board || state.board.hero !== "johnson" || state.johnsonIntroUsed) return;
   state.groups = johnsonPreset();
   state.johnsonIntroUsed = true;
+  renderGroups();
+}
+
+function applyValeUpdraft() {
+  if (!state.board || state.board.hero !== "vale" || !valeColor()) return;
+  if (state.groups.some((group) => group.updraft)) return;
+  if (!sameGroups(state.groups, [emptyGroup()])) return;
+  state.groups = [valeGroup(valeColor())];
   renderGroups();
 }
 
@@ -432,6 +451,9 @@ function renderGroups() {
   if (isJohnsonTrio(state.groups)) {
     root.appendChild(buildJohnsonCard(state.groups.slice(0, 3)));
     index = 3;
+  } else if (state.groups[0] && state.groups[0].updraft) {
+    root.appendChild(buildValeCard(state.groups[0]));
+    index = 1;
   }
   for (; index < state.groups.length; index += 1) {
     root.appendChild(buildGroupElement(state.groups[index], index));
@@ -497,6 +519,53 @@ function buildJohnsonCard(groups) {
     row.appendChild(label);
   });
   entry.append(head, row);
+  return entry;
+}
+
+function buildValeCard(group) {
+  const entry = document.createElement("div");
+  entry.className = "entry vale-updraft";
+  entry.dataset.group = "0";
+  const head = document.createElement("div");
+  head.className = "johnson-head";
+  const note = document.createElement("p");
+  note.className = "hint johnson-note";
+  const rarity = state.data.rarities.find((item) => item.id === group.rarity);
+  const colorName = rarity ? rarity.name : group.rarity;
+  note.textContent = `Updraft reveals every ${colorName.toLowerCase()} treasure, and its size. The number is how many there are, and their maximum.`;
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "text-btn";
+  remove.dataset.removeVale = "true";
+  remove.textContent = "Remove";
+  remove.setAttribute("aria-label", `Remove the ${colorName} Updraft card`);
+  head.append(note, remove);
+  const label = document.createElement("label");
+  label.className = "field";
+  const name = document.createElement("span");
+  name.className = "johnson-name";
+  name.textContent = colorName;
+  if (rarity) name.style.color = rarity.color;
+  const input = document.createElement("input");
+  input.className = "group-count";
+  input.type = "number";
+  input.min = "0";
+  input.step = "1";
+  input.inputMode = "numeric";
+  input.autocomplete = "off";
+  input.enterKeyHint = "done";
+  input.value = group.count;
+  input.setAttribute("aria-label", colorName);
+  input.addEventListener("wheel", (event) => {
+    event.preventDefault();
+  }, { passive: false });
+  label.append(name, input);
+  entry.append(head, label);
+  const count = parseCount(group.count);
+  if (count > 0) {
+    const sizes = specifyBlock(group);
+    if (sizes) entry.appendChild(sizes);
+  }
   return entry;
 }
 
@@ -607,6 +676,7 @@ function specifyBlock(group) {
 }
 
 function specifyKinds(group) {
+  if (group.updraft) return ["size"];
   const chosen = ["rarity", "type", "size"].filter((kind) => group[kind]);
   if (!chosen.length) return [];
   return ["rarity", "type", "size"].filter((kind) => !group[kind]);
@@ -1398,6 +1468,10 @@ function onPickerChange(kind) {
     state.groups = [emptyGroup()];
     renderGroups();
   }
+  if (kind === "hero" && state.board.hero !== "vale" && untouchedValeCard()) {
+    state.groups = [emptyGroup()];
+    renderGroups();
+  }
 }
 
 function renderPicker(kind) {
@@ -1477,7 +1551,10 @@ function onPickerKey(event) {
 }
 
 function setSheet(open) {
-  if (open) applyJohnsonIntro();
+  if (open) {
+    applyJohnsonIntro();
+    applyValeUpdraft();
+  }
   $("#sheet").hidden = !open;
   $("#fab").textContent = open ? "×" : "+";
   $("#fab").setAttribute("aria-label", open ? "Close add form" : "Add information");
@@ -1489,6 +1566,10 @@ function setSheet(open) {
 function onSheetClick(event) {
   if (event.target.closest("[data-remove-johnson]")) {
     removeJohnsonCard();
+    return;
+  }
+  if (event.target.closest("[data-remove-vale]")) {
+    removeValeCard();
     return;
   }
   const remove = event.target.closest("[data-remove-group]");
@@ -1742,6 +1823,20 @@ function removeJohnsonCard() {
   hideError();
 }
 
+function untouchedValeCard() {
+  const group = state.groups[0];
+  return state.groups.length === 1 && group && group.updraft && !String(group.count || "").trim() && !(group.details || []).length;
+}
+
+function removeValeCard() {
+  if (!state.groups[0] || !state.groups[0].updraft) return;
+  captureInputs();
+  state.groups.splice(0, 1);
+  if (!state.groups.length) state.groups = [emptyGroup()];
+  renderGroups();
+  hideError();
+}
+
 function resetComposer() {
   state.groups = [emptyGroup()];
   renderGroups();
@@ -1851,6 +1946,7 @@ function onAdd(event) {
   applyMaxes(maxSpecs);
   firstRarityMax.forEach((rarity) => revealUnknownForMax(rarity, state.board.maxCounts.rarities[rarity]));
 
+  if (state.groups.some((group) => group.updraft)) state.valeUpdraftStep += 1;
   resetComposer();
   setSheet(false);
   persist();
@@ -2511,11 +2607,21 @@ function matchCard(match) {
   const won = match.result ? match.result.won : null;
   const outcome = won === true ? " · Won" : won === false ? " · Lost" : "";
   title.textContent = `${matchHouseName(match.house)} · ${total}${outcome}`;
+  const parts = [title, detailArrow()];
+  const resultLine = matchResultLine(match);
+  if (resultLine) {
+    const result = document.createElement("span");
+    result.className = "match-meta";
+    result.textContent = resultLine;
+    parts.push(result);
+  }
   const meta = document.createElement("span");
   meta.className = "match-meta";
   const bids = match.bids || {};
-  meta.textContent = `${formatMatchWhen(match.endedAt)} · ${matchHeroName(match.hero)} · ${formatCoins(bids.profit || 0)} / ${formatCoins(bids.risk || 0)} / ${formatCoins(bids.cap || 0)}`;
-  button.append(title, detailArrow(), meta);
+  const when = `${formatMatchWhen(match.endedAt)} · ${matchHeroName(match.hero)}`;
+  meta.textContent = resultLine ? when : `${when} · ${formatCoins(bids.profit || 0)} / ${formatCoins(bids.risk || 0)} / ${formatCoins(bids.cap || 0)}`;
+  parts.push(meta);
+  button.append(...parts);
   card.appendChild(button);
   if (open) card.appendChild(matchDetail(match));
   return card;
@@ -2532,12 +2638,6 @@ function matchDetail(match) {
   detail.appendChild(worth);
   const result = match.result || {};
   const value = Number.isFinite(result.value) ? result.value : null;
-  const outcome = matchOutcome(result, value);
-  if (outcome) {
-    const line = document.createElement("p");
-    line.textContent = outcome;
-    detail.appendChild(line);
-  }
   const bids = match.bids || {};
   const priced = (label, price) => {
     const amount = price || 0;
@@ -2578,18 +2678,18 @@ function matchDetail(match) {
   return detail;
 }
 
-function matchOutcome(result, value) {
-  const bid = Number.isFinite(result.winningBid) ? result.winningBid : null;
-  const gain = value != null && bid != null ? value - bid : null;
+function matchResultLine(match) {
+  const result = match.result || {};
+  const value = Number.isFinite(result.value) ? result.value : null;
+  const cost = Number.isFinite(result.winningBid) ? result.winningBid : null;
   const parts = [];
-  if (value != null) parts.push(`Pool value ${formatCoins(value)}.`);
-  if (bid != null) parts.push(`Winning bid ${formatCoins(bid)}.`);
-  if (result.won === true) {
-    parts.push(gain == null ? "You won." : `You won with a ${gain < 0 ? "loss" : "profit"} of ${formatCoins(Math.abs(gain))}.`);
-  } else if (result.won === false) {
-    parts.push(gain != null && gain < 0 ? `You lost, and the winner paid ${formatCoins(-gain)} over the value.` : "You lost.");
+  if (value != null) parts.push(`Reward ${formatCoins(value)}`);
+  if (cost != null) parts.push(`Final cost ${formatCoins(cost)}`);
+  if (value != null && cost != null) {
+    const gain = value - cost;
+    parts.push(gain < 0 ? `Loss ${formatCoins(-gain)}` : `Profit ${formatCoins(gain)}`);
   }
-  return parts.join(" ");
+  return parts.join(" · ");
 }
 
 function endGame() {
@@ -2660,6 +2760,7 @@ function finishGame(result) {
   state.detailItem = null;
   state.detailSub = null;
   state.johnsonIntroUsed = false;
+  state.valeUpdraftStep = 0;
   resetComposer();
   setSheet(false);
   persist();
@@ -4841,5 +4942,5 @@ function registerWorker() {
     refreshing = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("./sw.js?v=285").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=289").catch(() => {});
 }

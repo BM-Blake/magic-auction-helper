@@ -16,6 +16,10 @@ Tap + to add information. Known count adds that many treasures. Open rarity, typ
 
 The first time you add information as Johnson, gray, green, and blue share one card. Each number is how many there are, and their maximum. You can remove that card.
 
+### Vale
+
+Each time you add information as Vale, Updraft offers the next color: gray, then green, then blue, then purple. The number is how many there are, and their maximum, and you can split their sizes. You can remove that card. After purple, adding returns to the normal card.
+
 ## Read what you have
 
 A chip appears when that rarity, type, or size has a listed treasure, or a maximum above zero. Tap it to open those treasures. With two or more, the other categories stay available above the list. One treasure opens on its own. A count shows as listed/maximum. Unknown holds treasures that are still missing that fact. You cannot add more of a category than its maximum.
@@ -26,7 +30,7 @@ Estimate worth is a range from the treasure catalog, and its top stops at the ho
 
 ## Match history
 
-Match history keeps each finished round on this device, including the recommendation prices. End game asks for the pool value, the winning bid, and whether you won, and each one is optional. With a pool value, each price shows the profit or loss of winning at that price. Remove drops one round from the history.
+Match history keeps each finished round on this device, including the recommendation prices. End game asks for the pool value, the winning bid, and whether you won, and each one is optional. The card shows the pool value as the reward, the winning bid as the final cost, and the profit or loss. With a pool value, each price shows the profit or loss of winning at that price. Remove drops one round from the history.
 
 ## Database
 

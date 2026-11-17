@@ -1657,6 +1657,20 @@ select.group-use {
   -moz-appearance: textfield;
 }
 
+.vale-updraft > .field { max-width: 140px; }
+
+.vale-updraft input[type="number"] {
+  text-align: center;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.vale-updraft input[type="number"]::-webkit-outer-spin-button,
+.vale-updraft input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 .johnson-counts input[type="number"]::-webkit-outer-spin-button,
 .johnson-counts input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
